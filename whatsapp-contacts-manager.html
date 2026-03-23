@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Contacts Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <style>
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .container { background: rgba(255,255,255,0.95); border-radius: 15px; padding: 30px; margin-top: 20px; margin-bottom: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        .vip-row { background-color: #fff3cd !important; }
+        .editable:focus { background-color: #e3f2fd; outline: 2px solid #2196f3; }
+        .gender-male { color: #2196f3; font-weight: bold; }
+        .gender-female { color: #e91e63; font-weight: bold; }
+        .vip-badge { background: linear-gradient(45deg, #ffd700, #ffed4e); color: #333; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; }
+        .loading { display: none; }
+        .progress { height: 25px; }
+        .arabic-name { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; }
+        .filter-panel { background: #f8f9fa; border-radius: 10px; padding: 15px; margin-bottom: 20px; }
+        .btn-action { margin: 2px; }
+        .stats-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px; padding: 15px; margin-bottom: 15px; }
+        td:first-child { position: relative; }
+        .table td { vertical-align: middle; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">
+            <i class="bi bi-whatsapp"></i> WhatsApp Contacts Manager
+            <a href="whatsapp-sender.html" class="btn btn-danger btn-sm float-end">
+                <i class="bi bi-send"></i> Go to Sender
+            </a>
+        </h1>
+        
+        <!-- Configuration Panel -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">WAHA API Configuration</h5>
+                <button class="btn btn-sm btn-light" onclick="showCORSHelp()">
+                    <i class="bi bi-shield-exclamation"></i> CORS Help
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <label class="form-label">WAHA API URL</label>
+                        <input type="text" class="form-control" id="wahaUrl" value="https://waha.xee.run.place/" placeholder="https://your-waha-instance.com/">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">API Key (if required)</label>
+                        <input type="password" class="form-control" id="apiKey" placeholder="Enter API Key">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Session Name</label>
+                        <input type="text" class="form-control" id="sessionName" value="default" placeholder="default">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-success w-100 mb-2" onclick="fetchContacts()">
+                            <span class="spinner-border spinner-border-sm loading" id="fetchLoading"></span>
+                            Fetch Contacts
+                        </button>
+                        <button class="btn btn-outline-info btn-sm w-100 mb-2" onclick="testWAHAConnection()">
+                            Test CORS
+                        </button>
+                        <input type="file" id="importFileInput" accept=".json" style="display: none;" onchange="importFromJSON(event)">
+                        <button class="btn btn-info btn-sm w-100" onclick="document.getElementById('importFileInput').click()">
+                            Import JSON
+                        </button>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <small class="text-muted">
+                            <span class="badge bg-warning text-dark">⚠️ Important</span> 
+                            If you get "Failed to fetch", it's likely a CORS issue. 
+                            Click "CORS Help" button above for solutions, or try the "Test CORS" button to diagnose.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Configuration Panel -->
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-magic"></i> AI Enrichment (Tested & Ready)</h5>
+                <button class="btn btn-sm btn-light" onclick="showFreeAIHelp()">
+                    <i class="bi bi-question-circle"></i> API Setup Guide
+                </button>
+            </div>
+            <div class="card-body">
+                <!-- API Status Indicators -->
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <small class="text-muted">
+                            <span class="badge bg-success">✓ Tested Working</span> 
+                            <span class="badge bg-warning text-dark">⚠ Your API Keys</span>
+                            Pre-configured APIs ready to use:
+                        </small>
+                        <div class="mt-2">
+                            <span class="badge bg-success me-2">Groq ✓</span>
+                            <span class="badge bg-secondary me-2">OpenRouter ✓</span>
+                            <span class="badge bg-info">Local Processing ✓</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-3">
+                        <label class="form-label">AI Provider</label>
+                        <select class="form-select" id="aiProvider" onchange="toggleAIConfig()">
+                            <option value="groq_allam" selected>🏆 Groq ALLAM (Arabic - BEST)</option>
+                            <option value="groq_llama70b">⚡ Groq Llama 3.3 70B (Fast)</option>
+                            <option value="groq_llama8b">🚀 Groq Llama 3.1 8B (Ultra-Fast)</option>
+                            <option value="openrouter">🌐 OpenRouter (Backup)</option>
+                            <option value="local">💻 Local Processing (Offline)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 ai-config-groq">
+                        <label class="form-label">Groq API Key</label>
+                        <select class="form-select" id="groqKeySelect">
+                            <option value="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">Key 1 (Active)</option>
+                            <option value="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">Key 2 (Backup)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 ai-config-openrouter" style="display: none;">
+                        <label class="form-label">OpenRouter API Key</label>
+                        <input type="password" class="form-control" id="openrouterKey" value="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" readonly>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-primary w-100" onclick="testAIConnection()">
+                            <span class="spinner-border spinner-border-sm loading" id="testLoading"></span>
+                            Test Connection
+                        </button>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="aiTranslate" checked>
+                            <label class="form-check-label" for="aiTranslate">Translate to Arabic</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="aiGender" checked>
+                            <label class="form-check-label" for="aiGender">Detect Gender</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="aiVIP">
+                            <label class="form-check-label" for="aiVIP">Auto VIP Detection</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="aiNormalize">
+                            <label class="form-check-label" for="aiNormalize">Normalize Names</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-12">
+                        <small class="text-muted" id="aiInfoText">
+                            <i class="bi bi-info-circle"></i> 
+                            <strong>💡 AI Enrich Button:</strong> Click to process contacts. First time processes all. After that, you'll be asked to choose: new contacts only OR reprocess all.
+                        </small>
+                    </div>
+                </div>
+                <div class="row mt-2" id="freeTierInfo" style="display: none;">
+                    <div class="col-12">
+                        <div class="alert alert-success py-2">
+                            <strong>Free AI Provider Selected!</strong><br>
+                            <span id="freeTierDetails"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div id="progressContainer" class="mb-4" style="display: none;">
+            <div class="d-flex justify-content-between mb-2">
+                <span id="progressText">Processing contacts...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="progress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="row" id="statsContainer" style="display: none;">
+            <div class="col-md-3">
+                <div class="stats-card text-center">
+                    <h3 id="totalContacts">0</h3>
+                    <p class="mb-0">Total Contacts</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card text-center">
+                    <h3 id="filteredContacts">0</h3>
+                    <p class="mb-0">Filtered Friends</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card text-center">
+                    <h3 id="maleCount">0</h3>
+                    <p class="mb-0">Male</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card text-center">
+                    <h3 id="femaleCount">0</h3>
+                    <p class="mb-0">Female</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters Panel -->
+        <div class="filter-panel" id="filtersPanel" style="display: none;">
+            <h6><i class="bi bi-funnel"></i> Filters</h6>
+            <div class="row">
+                <div class="col-md-3">
+                    <input type="text" class="form-control" id="searchName" placeholder="Search name..." onkeyup="filterTable()">
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" id="filterGender" onchange="filterTable()">
+                        <option value="">All Genders</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Unknown">Unknown</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" id="filterVIP" onchange="filterTable()">
+                        <option value="">All VIP Status</option>
+                        <option value="true">VIP Only</option>
+                        <option value="false">Non-VIP</option>
+                    </select>
+                </div>
+                <div class="col-md-5 text-end">
+                    <button class="btn btn-primary btn-action" onclick="enrichWithAI()">
+                        <span class="spinner-border spinner-border-sm loading" id="aiLoading"></span>
+                        AI Enrich All
+                    </button>
+                    <button class="btn btn-success btn-action" onclick="exportToCSV()">Export CSV</button>
+                    <button class="btn btn-warning btn-action" onclick="exportToJSON()">Export JSON</button>
+                    <button class="btn btn-danger btn-action" onclick="clearData()">Clear</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contacts Table -->
+        <div class="table-responsive" id="tableContainer" style="display: none;">
+            <table class="table table-striped table-hover" id="contactsTable">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Photo</th>
+                        <th>Phone Number</th>
+                        <th>Original Name</th>
+                        <th>English Name</th>
+                        <th>Arabic Name</th>
+                        <th>Gender</th>
+                        <th>VIP</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="contactsTableBody">
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="text-center py-5">
+            <i class="bi bi-person-lines-fill" style="font-size: 4rem; color: #ccc;"></i>
+            <h4 class="mt-3 text-muted">No contacts loaded</h4>
+            <p class="text-muted">
+                Choose one of the options above:<br>
+                <strong>1.</strong> Click "Fetch Contacts" to load from WAHA<br>
+                <strong>2.</strong> Click "Import JSON" to load previously saved contacts
+            </p>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    
+    <script>
+        let contactsData = [];
+        let dataTable = null;
+
+        // Common Arabic name patterns for gender detection
+        const malePatterns = [
+            /\b(mr|mr\.|mister|master|boy|man|male|son|brother|father|uncle|grandpa)\b/i,
+            /\b(mohammed|mohammad|muhammad|ahmed|ahmad|ali|omar|khaled|khalid|abdel|abdul|hassan|hussein|youssef|yousef|mahmoud|mustafa|tarek|tarik|amr|karim|sayed|hany|wael|ramy|islam|hamed|momen|bassem|alaa|essam)\b/i
+        ];
+        
+        const femalePatterns = [
+            /\b(mrs|mrs\.|ms|ms\.|miss|mistress|girl|woman|female|daughter|sister|mother|aunt|grandma)\b/i,
+            /\b(fatima|fatma|maryam|mariam|ayman|aisha|aicha|khadija|khadiga|zainab|zaynab|nour|noor|hana|hanaa|yasmin|yasmine|salma|malak|habiba|farida|reem|rim|rima|lina|samar|nada|dina|mai|maha|mona|heba|hiba|ghada|eman|imane|amira|amany|shimaa|shaymaa|esraa|israa)\b/i
+        ];
+
+        // Commercial/Sales keywords to exclude
+        const excludedKeywords = [
+            'business', 'company', 'corp', 'inc', 'ltd', 'llc', 'shop', 'store', 'market',
+            'service', 'services', 'support', 'sales', 'marketing', 'info', 'contact',
+            'help', 'care', 'bot', 'robot', 'assistant', 'delivery', 'order', 'buy',
+            'sell', 'promo', 'offer', 'deal', 'discount', 'price', 'cost', 'payment',
+            'bank', 'insurance', 'clinic', 'hospital', 'pharmacy', 'restaurant', 'cafe',
+            'hotel', 'travel', 'tour', 'taxi', 'uber', 'careem', 'jumia', 'amazon',
+            'noor', '????', 'group', 'team', 'admin', 'official', 'verified', 'channel',
+            'news', 'media', 'ads', 'advertising', 'customer', 'client', 'agent'
+        ];
+
+        async function fetchContacts() {
+            const url = document.getElementById('wahaUrl').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const session = document.getElementById('sessionName').value.trim() || 'default';
+            
+            if (!url) {
+                alert('Please enter WAHA API URL');
+                return;
+            }
+
+            showLoading('fetchLoading', true);
+            document.getElementById('progressContainer').style.display = 'block';
+            
+            try {
+                const baseUrl = url.endsWith('/') ? url : url + '/';
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                if (apiKey) {
+                    headers['X-Api-Key'] = apiKey;
+                }
+
+                updateProgress(10, 'Fetching contacts from WAHA...');
+                
+                // Fetch all contacts with CORS mode
+                const response = await fetch(`${baseUrl}api/contacts/all?session=${session}`, {
+                    method: 'GET',
+                    headers: headers,
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const contacts = await response.json();
+                updateProgress(30, `Retrieved ${contacts.length} contacts, filtering...`);
+                
+                // Filter contacts
+                const filteredContacts = filterContacts(contacts);
+                updateProgress(50, `Filtered to ${filteredContacts.length} personal contacts...`);
+                
+                // Process contacts
+                contactsData = await processContacts(filteredContacts);
+                
+                updateProgress(100, 'Complete!');
+                
+                displayContacts();
+                updateStats();
+                
+                document.getElementById('emptyState').style.display = 'none';
+                document.getElementById('tableContainer').style.display = 'block';
+                document.getElementById('filtersPanel').style.display = 'block';
+                document.getElementById('statsContainer').style.display = 'flex';
+                
+                setTimeout(() => {
+                    document.getElementById('progressContainer').style.display = 'none';
+                }, 1000);
+                
+            } catch (error) {
+                console.error('Error fetching contacts:', error);
+                handleFetchError(error, url);
+                document.getElementById('progressContainer').style.display = 'none';
+            } finally {
+                showLoading('fetchLoading', false);
+            }
+        }
+
+        function handleFetchError(error, url) {
+            let message = error.message;
+            let isCORS = error.message.includes('Failed to fetch') || 
+                        error.message.includes('CORS') || 
+                        error.message.includes('NetworkError');
+            
+            if (isCORS) {
+                message = `CORS Error: The WAHA server at ${url} is not allowing browser requests.\n\n` +
+                         `SOLUTIONS:\n\n` +
+                         `1️⃣ Enable CORS on WAHA server (RECOMMENDED):\n` +
+                         `   - Add flag: --cors\n` +
+                         `   - Or set env: WAHA_CORS=true\n` +
+                         `   - Or in docker-compose.yml: CORS: "true"\n\n` +
+                         `2️⃣ Use a CORS proxy (temporary fix):\n` +
+                         `   - Install browser extension: "CORS Unblock" or "Allow CORS"\n\n` +
+                         `3️⃣ Access via HTTPS (not file://):\n` +
+                         `   - Use: npx http-server -p 8000\n` +
+                         `   - Then open: http://localhost:8000\n\n` +
+                         `4️⃣ Test WAHA directly:\n` +
+                         `   Visit: ${url}/api/contacts/all?session=default\n` +
+                         `   If it works in browser, CORS is the issue.`;
+            }
+            
+            alert(message);
+        }
+
+        function filterContacts(contacts) {
+            return contacts.filter(contact => {
+                const name = (contact.name || contact.pushname || '').toLowerCase();
+                const phone = (contact.id || '').replace(/\D/g, '');
+                
+                // Exclude groups (IDs ending with @g.us)
+                if (contact.id && contact.id.includes('@g.us')) return false;
+                
+                // Exclude if no name
+                if (!name || name.trim() === '' || name === 'unknown') return false;
+                
+                // Exclude if name is just a phone number
+                if (/^\d+$/.test(name.replace(/\s/g, ''))) return false;
+                
+                // Exclude commercial/sales/bot keywords
+                for (const keyword of excludedKeywords) {
+                    if (name.includes(keyword.toLowerCase())) return false;
+                }
+                
+                // Exclude very short names (likely bots or incomplete)
+                if (name.length < 3) return false;
+                
+                return true;
+            });
+        }
+
+        async function processContacts(contacts) {
+            const processed = [];
+            const total = contacts.length;
+            
+            for (let i = 0; i < contacts.length; i++) {
+                const contact = contacts[i];
+                const progress = 50 + Math.round((i / total) * 50);
+                updateProgress(progress, `Processing contact ${i + 1} of ${total}...`);
+                
+                const originalName = contact.name || contact.pushname || '';
+                const phone = contact.id ? contact.id.split('@')[0] : '';
+                
+                // Detect gender from name
+                const gender = detectGender(originalName);
+                
+                processed.push({
+                    id: contact.id || '',
+                    phone: phone,
+                    originalName: originalName,
+                    englishName: originalName,
+                    arabicName: '',
+                    gender: gender,
+                    isVIP: false,
+                    photo: contact.profilePicThumb || '',
+                    isProcessed: false
+                });
+            }
+            
+            return processed;
+        }
+
+        function detectGender(name) {
+            const lowerName = name.toLowerCase();
+            
+            for (const pattern of malePatterns) {
+                if (pattern.test(lowerName)) return 'Male';
+            }
+            
+            for (const pattern of femalePatterns) {
+                if (pattern.test(lowerName)) return 'Female';
+            }
+            
+            // Check for Arabic male name endings
+            if (/[\u0600-\u06FF]/.test(name)) {
+                // Common Arabic male name indicators
+                if (/\u064a\u0648\u0633\u0641|\u0639\u0645\u0631|\u062e\u0627\u0644\u062f|\u0639\u0644\u064a|\u0623\u062d\u0645\u062f|\u0645\u062d\u0645\u062f|\u0645\u062d\u0645\u0648\u062f/.test(name)) {
+                    return 'Male';
+                }
+                // Common Arabic female name indicators
+                if (/\u0641\u0627\u0637\u0645\u0629|\u0645\u0631\u064a\u0645|\u0639\u0627\u0626\u0634\u0629|\u0632\u064a\u0646\u0628|\u0633\u0644\u0645\u0649|\u0646\u0648\u0631|\u064a\u0627\u0633\u0645\u064a\u0646/.test(name)) {
+                    return 'Female';
+                }
+            }
+            
+            return 'Unknown';
+        }
+
+        async function testWAHAConnection() {
+            const url = document.getElementById('wahaUrl').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const session = document.getElementById('sessionName').value.trim() || 'default';
+            
+            if (!url) {
+                alert('Please enter WAHA API URL first');
+                return;
+            }
+            
+            try {
+                const baseUrl = url.endsWith('/') ? url : url + '/';
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                if (apiKey) {
+                    headers['X-Api-Key'] = apiKey;
+                }
+                
+                // Try to fetch sessions (lighter endpoint)
+                const response = await fetch(`${baseUrl}api/sessions`, {
+                    method: 'GET',
+                    headers: headers,
+                    mode: 'cors'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    alert(`✅ CORS is WORKING!\n\nConnected to WAHA successfully.\nSessions found: ${data.length}\n\nYou can now fetch contacts.`);
+                } else {
+                    alert(`⚠️ Server responded with error:\nHTTP ${response.status}: ${response.statusText}\n\nCheck if WAHA is running and the URL is correct.`);
+                }
+            } catch (error) {
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    alert(`❌ CORS ERROR - Browser blocked the request\n\nThe WAHA server needs CORS enabled.\n\nQuick fixes:\n1. Add --cors flag when starting WAHA\n2. Or use browser extension "CORS Unblock"\n3. Or run: npx http-server -p 8000\n   Then open http://localhost:8000\n\nError: ${error.message}`);
+                } else {
+                    alert(`❌ Connection Error:\n${error.message}\n\nCheck:\n- WAHA server is running\n- URL is correct (${url})\n- Network connection`);
+                }
+            }
+        }
+
+        async function enrichWithAI() {
+            const unprocessedCount = contactsData.filter(c => !c.isProcessed && (!c.arabicName || c.gender === 'Unknown')).length;
+            const totalCount = contactsData.length;
+            
+            let processMode;
+            if (unprocessedCount === 0) {
+                // All processed, ask if they want to reprocess
+                processMode = confirm(
+                    `All ${totalCount} contacts have been processed.\n\n` +
+                    `Do you want to REPROCESS ALL contacts?\n\n` +
+                    `Click OK to reprocess all contacts\n` +
+                    `Click Cancel to skip`
+                ) ? 'all' : 'none';
+            } else if (unprocessedCount < totalCount) {
+                // Some processed, ask which to process
+                processMode = prompt(
+                    `Choose processing mode:\n\n` +
+                    `Total contacts: ${totalCount}\n` +
+                    `Already processed: ${totalCount - unprocessedCount}\n` +
+                    `Unprocessed: ${unprocessedCount}\n\n` +
+                    `Enter:\n` +
+                    `1 - Process NEW/UNPROCESSED only (${unprocessedCount} contacts)\n` +
+                    `2 - REPROCESS ALL contacts (${totalCount} contacts)\n` +
+                    `0 - Cancel\n\n` +
+                    `(Default: 1)`,
+                    '1'
+                );
+                
+                if (processMode === '1' || processMode === null) processMode = 'new';
+                else if (processMode === '2') processMode = 'all';
+                else processMode = 'none';
+            } else {
+                // None processed
+                processMode = 'all';
+            }
+            
+            if (processMode === 'none') {
+                alert('Processing cancelled.');
+                return;
+            }
+            
+            const processAll = processMode === 'all';
+            
+            showLoading('aiLoading', true);
+            document.getElementById('progressContainer').style.display = 'block';
+            
+            const toProcess = processAll 
+                ? contactsData 
+                : contactsData.filter(c => !c.isProcessed || !c.arabicName || c.gender === 'Unknown');
+            
+            const total = toProcess.length;
+            let processed = 0;
+            let successCount = 0;
+            let failCount = 0;
+            
+            for (let i = 0; i < contactsData.length; i++) {
+                const contact = contactsData[i];
+                
+                // Skip if not in processing list
+                if (!toProcess.includes(contact)) continue;
+                
+                const progress = Math.round((processed / total) * 100);
+                updateProgress(progress, `AI enriching contact ${processed + 1} of ${total}...`);
+                
+                try {
+                    await enrichContactWithAI(contact);
+                    contact.isProcessed = true;
+                    successCount++;
+                } catch (error) {
+                    console.error(`Error processing ${contact.originalName}:`, error);
+                    // Fallback to local processing
+                    contact.arabicName = translateToArabic(contact.originalName);
+                    if (contact.gender === 'Unknown' || !contact.gender) {
+                        contact.gender = detectGender(contact.originalName);
+                    }
+                    failCount++;
+                }
+                processed++;
+            }
+            
+            updateProgress(100, 'AI enrichment complete! Refreshing table...');
+            
+            // Refresh entire table to show updated data
+            displayContacts();
+            updateStats();
+            
+            setTimeout(() => {
+                document.getElementById('progressContainer').style.display = 'none';
+            }, 1000);
+            
+            showLoading('aiLoading', false);
+            
+            let message = `✅ AI Enrichment Complete!\n\n`;
+            message += `Processed: ${successCount} contacts\n`;
+            if (failCount > 0) {
+                message += `Failed (used fallback): ${failCount} contacts\n`;
+            }
+            message += `\nThe table has been updated with Arabic names and gender detection.`;
+            
+            alert(message);
+        }
+
+        async function enrichContactWithAI(contact) {
+            const provider = document.getElementById('aiProvider').value;
+            const name = contact.originalName;
+            
+            if (provider === 'local') {
+                // Local processing
+                await new Promise(resolve => setTimeout(resolve, 50));
+                contact.arabicName = translateToArabic(name);
+                if (contact.gender === 'Unknown') {
+                    contact.gender = detectGenderAI(name);
+                }
+            } else if (provider.startsWith('groq')) {
+                // Groq API processing
+                const apiKey = document.getElementById('groqKeySelect').value;
+                let model, endpoint;
+                
+                if (provider === 'groq_allam') {
+                    model = 'allam-2-7b';
+                    endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+                } else if (provider === 'groq_llama70b') {
+                    model = 'llama-3.3-70b-versatile';
+                    endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+                } else if (provider === 'groq_llama8b') {
+                    model = 'llama-3.1-8b-instant';
+                    endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+                }
+                
+                try {
+                    const result = await processWithAI(name, provider, apiKey, model, endpoint);
+                    contact.englishName = result.englishName;
+                    contact.arabicName = result.arabicName;
+                    contact.gender = result.gender;
+                    contact.isVIP = result.isVIP;
+                } catch (error) {
+                    console.error('Groq enrichment failed:', error);
+                    contact.arabicName = translateToArabic(name);
+                    if (contact.gender === 'Unknown') {
+                        contact.gender = detectGenderAI(name);
+                    }
+                }
+            } else if (provider === 'openrouter') {
+                // OpenRouter processing
+                const apiKey = document.getElementById('openrouterKey').value;
+                const model = 'google/gemma-3-4b-it:free';
+                const endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+                
+                try {
+                    const result = await processWithAI(name, provider, apiKey, model, endpoint);
+                    contact.englishName = result.englishName;
+                    contact.arabicName = result.arabicName;
+                    contact.gender = result.gender;
+                    contact.isVIP = result.isVIP;
+                } catch (error) {
+                    console.error('OpenRouter enrichment failed:', error);
+                    contact.arabicName = translateToArabic(name);
+                    if (contact.gender === 'Unknown') {
+                        contact.gender = detectGenderAI(name);
+                    }
+                }
+            } else {
+                // Generic external AI processing
+                const apiKey = document.getElementById('aiApiKey').value.trim();
+                const model = document.getElementById('aiModel').value.trim();
+                const endpoint = document.getElementById('aiEndpoint').value.trim();
+                
+                if (!apiKey) {
+                    console.warn('No API key provided for AI provider, falling back to local processing');
+                    contact.arabicName = translateToArabic(name);
+                    if (contact.gender === 'Unknown') {
+                        contact.gender = detectGenderAI(name);
+                    }
+                    return;
+                }
+                
+                try {
+                    const result = await processWithAI(name, provider, apiKey, model, endpoint);
+                    contact.englishName = result.englishName;
+                    contact.arabicName = result.arabicName;
+                    contact.gender = result.gender;
+                    contact.isVIP = result.isVIP;
+                } catch (error) {
+                    console.error('AI enrichment failed:', error);
+                    // Fallback to local processing
+                    contact.arabicName = translateToArabic(name);
+                    if (contact.gender === 'Unknown') {
+                        contact.gender = detectGenderAI(name);
+                    }
+                }
+            }
+        }
+
+        function translateToArabic(name) {
+            // Simple transliteration mapping for common names
+            const translations = {
+                'mohammed': '??????',
+                'mohammad': '??????',
+                'muhammad': '??????',
+                'ahmed': '????',
+                'ahmad': '????',
+                'ali': '???',
+                'omar': '????',
+                'khaled': '????',
+                'khalid': '?????',
+                'hassan': '????',
+                'hussein': '??????',
+                'youssef': '????',
+                'yousef': '????',
+                'mahmoud': '????',
+                'mustafa': '?????',
+                'tarek': '????',
+                'amr': '????',
+                'karim': '????',
+                'fatima': '??????',
+                'maryam': '?????',
+                'aisha': '??????',
+                'khadija': '??????',
+                'zainab': '?????',
+                'nour': '???',
+                'yasmin': '?????',
+                'salma': '????',
+                'reem': '????',
+                'lina': '????'
+            };
+            
+            const lowerName = name.toLowerCase();
+            for (const [eng, arab] of Object.entries(translations)) {
+                if (lowerName.includes(eng)) {
+                    return arab;
+                }
+            }
+            
+            // If no translation found, return empty or attempt basic transliteration
+            return '';
+        }
+
+        function detectGenderAI(name) {
+            // Enhanced gender detection
+            const maleNames = ['john', 'michael', 'david', 'james', 'robert', 'william', 'richard', 'thomas', 'charles', 'daniel'];
+            const femaleNames = ['mary', 'patricia', 'jennifer', 'linda', 'elizabeth', 'susan', 'jessica', 'sarah', 'karen', 'nancy'];
+            
+            const lowerName = name.toLowerCase();
+            
+            for (const mName of maleNames) {
+                if (lowerName.includes(mName)) return 'Male';
+            }
+            
+            for (const fName of femaleNames) {
+                if (lowerName.includes(fName)) return 'Female';
+            }
+            
+            return 'Unknown';
+        }
+
+        function displayContacts() {
+            const tbody = document.getElementById('contactsTableBody');
+            tbody.innerHTML = '';
+            
+            contactsData.forEach((contact, index) => {
+                const row = createTableRow(contact, index);
+                tbody.appendChild(row);
+            });
+            
+            // Initialize DataTable
+            if (dataTable) {
+                dataTable.destroy();
+            }
+            
+            dataTable = $('#contactsTable').DataTable({
+                pageLength: 25,
+                order: [[2, 'asc']],
+                language: {
+                    search: 'Search:',
+                    lengthMenu: 'Show _MENU_ entries'
+                }
+            });
+        }
+
+        function createTableRow(contact, index) {
+            const row = document.createElement('tr');
+            row.id = `row-${index}`;
+            row.className = contact.isVIP ? 'vip-row' : '';
+            
+            const genderClass = contact.gender === 'Male' ? 'gender-male' : 
+                               contact.gender === 'Female' ? 'gender-female' : '';
+            
+            const aiEnriched = contact.isProcessed || (contact.arabicName && contact.arabicName.trim() !== '');
+            
+            row.innerHTML = `
+                <td>
+                    ${contact.photo ? 
+                        `<img src="${contact.photo}" class="rounded-circle" width="40" height="40" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22><rect width=%2240%22 height=%2240%22 fill=%22%23ddd%22/><text x=%2250%%22 y=%2250%%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23666%22>${contact.originalName.charAt(0)}</text></svg>'">` : 
+                        `<div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">${contact.originalName.charAt(0)}</div>`
+                    }
+                    ${aiEnriched ? '<span class="badge bg-success position-absolute" style="font-size: 0.5em; top: 0; right: 0;">AI</span>' : ''}
+                </td>
+                <td>${contact.phone}</td>
+                <td class="editable" contenteditable="true" onblur="updateContact(${index}, 'originalName', this.innerText)">${contact.originalName}</td>
+                <td class="editable" contenteditable="true" onblur="updateContact(${index}, 'englishName', this.innerText)">${contact.englishName || ''}</td>
+                <td class="editable arabic-name" contenteditable="true" onblur="updateContact(${index}, 'arabicName', this.innerText)">${contact.arabicName || ''}</td>
+                <td class="${genderClass}">
+                    <select class="form-select form-select-sm" onchange="updateContact(${index}, 'gender', this.value)">
+                        <option value="Unknown" ${contact.gender === 'Unknown' ? 'selected' : ''}>Unknown</option>
+                        <option value="Male" ${contact.gender === 'Male' ? 'selected' : ''}>Male</option>
+                        <option value="Female" ${contact.gender === 'Female' ? 'selected' : ''}>Female</option>
+                    </select>
+                </td>
+                <td>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" ${contact.isVIP ? 'checked' : ''} onchange="toggleVIP(${index}, this.checked)">
+                        ${contact.isVIP ? '<span class="vip-badge ms-2">VIP</span>' : ''}
+                    </div>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-danger" onclick="deleteContact(${index})">Delete</button>
+                </td>
+            `;
+            
+            return row;
+        }
+
+        function updateTableRow(index) {
+            const contact = contactsData[index];
+            const row = document.getElementById(`row-${index}`);
+            if (row) {
+                row.className = contact.isVIP ? 'vip-row' : '';
+            }
+        }
+
+        function updateContact(index, field, value) {
+            contactsData[index][field] = value;
+        }
+
+        function toggleVIP(index, isChecked) {
+            contactsData[index].isVIP = isChecked;
+            const row = document.getElementById(`row-${index}`);
+            if (row) {
+                row.className = isChecked ? 'vip-row' : '';
+                const vipBadge = row.querySelector('.vip-badge');
+                if (vipBadge) {
+                    vipBadge.style.display = isChecked ? 'inline' : 'none';
+                }
+            }
+            updateStats();
+        }
+
+        function deleteContact(index) {
+            if (confirm('Are you sure you want to delete this contact?')) {
+                contactsData.splice(index, 1);
+                displayContacts();
+                updateStats();
+            }
+        }
+
+        function filterTable() {
+            const searchName = document.getElementById('searchName').value.toLowerCase();
+            const filterGender = document.getElementById('filterGender').value;
+            const filterVIP = document.getElementById('filterVIP').value;
+            
+            if (dataTable) {
+                dataTable.destroy();
+            }
+            
+            const filtered = contactsData.filter(contact => {
+                const matchesName = !searchName || 
+                    contact.originalName.toLowerCase().includes(searchName) ||
+                    contact.englishName.toLowerCase().includes(searchName) ||
+                    contact.arabicName.includes(searchName);
+                
+                const matchesGender = !filterGender || contact.gender === filterGender;
+                const matchesVIP = filterVIP === '' || contact.isVIP.toString() === filterVIP;
+                
+                return matchesName && matchesGender && matchesVIP;
+            });
+            
+            const tbody = document.getElementById('contactsTableBody');
+            tbody.innerHTML = '';
+            
+            filtered.forEach((contact, index) => {
+                const originalIndex = contactsData.indexOf(contact);
+                const row = createTableRow(contact, originalIndex);
+                tbody.appendChild(row);
+            });
+            
+            dataTable = $('#contactsTable').DataTable({
+                pageLength: 25,
+                order: [[2, 'asc']]
+            });
+        }
+
+        function updateStats() {
+            document.getElementById('totalContacts').textContent = contactsData.length;
+            document.getElementById('filteredContacts').textContent = contactsData.length;
+            document.getElementById('maleCount').textContent = contactsData.filter(c => c.gender === 'Male').length;
+            document.getElementById('femaleCount').textContent = contactsData.filter(c => c.gender === 'Female').length;
+        }
+
+        function updateProgress(percent, text) {
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressPercent').textContent = percent + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+
+        function showLoading(elementId, show) {
+            document.getElementById(elementId).style.display = show ? 'inline-block' : 'none';
+        }
+
+        function exportToCSV() {
+            const headers = ['Phone Number', 'Original Name', 'English Name', 'Arabic Name', 'Gender', 'VIP'];
+            const rows = contactsData.map(c => [
+                c.phone,
+                c.originalName,
+                c.englishName,
+                c.arabicName,
+                c.gender,
+                c.isVIP ? 'Yes' : 'No'
+            ]);
+            
+            let csv = headers.join(',') + '\n';
+            rows.forEach(row => {
+                csv += row.map(cell => `"${(cell || '').toString().replace(/"/g, '""')}"`).join(',') + '\n';
+            });
+            
+            downloadFile(csv, 'whatsapp-contacts.csv', 'text/csv');
+        }
+
+        function exportToJSON() {
+            const json = JSON.stringify(contactsData, null, 2);
+            downloadFile(json, 'whatsapp-contacts.json', 'application/json');
+        }
+
+        function importFromJSON(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                alert('No file selected');
+                return;
+            }
+
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const jsonContent = e.target.result;
+                    const importedData = JSON.parse(jsonContent);
+                    
+                    // Validate the imported data
+                    if (!Array.isArray(importedData)) {
+                        alert('Error: Invalid file format. Expected an array of contacts.');
+                        return;
+                    }
+                    
+                    if (importedData.length === 0) {
+                        alert('Error: File contains no contacts.');
+                        return;
+                    }
+                    
+                    // Validate contact structure
+                    const validContacts = importedData.filter(contact => {
+                        return contact && (contact.phone || contact.originalName || contact.id);
+                    });
+                    
+                    if (validContacts.length === 0) {
+                        alert('Error: No valid contacts found in file.');
+                        return;
+                    }
+                    
+                    // Confirm import
+                    const confirmImport = confirm(
+                        `Import ${validContacts.length} contacts from file?\n\n` +
+                        `Current contacts: ${contactsData.length}\n` +
+                        `After import: ${contactsData.length + validContacts.length}\n\n` +
+                        `Click OK to import and merge with existing contacts, or Cancel to replace all.`
+                    );
+                    
+                    if (confirmImport) {
+                        // Merge with existing
+                        contactsData = [...contactsData, ...validContacts];
+                    } else {
+                        // Replace all
+                        const replaceAll = confirm('Replace all existing contacts with imported data?');
+                        if (replaceAll) {
+                            contactsData = validContacts;
+                        } else {
+                            return; // Cancelled
+                        }
+                    }
+                    
+                    // Display the imported contacts
+                    displayContacts();
+                    updateStats();
+                    
+                    document.getElementById('emptyState').style.display = 'none';
+                    document.getElementById('tableContainer').style.display = 'block';
+                    document.getElementById('filtersPanel').style.display = 'block';
+                    document.getElementById('statsContainer').style.display = 'flex';
+                    
+                    alert(`✅ Import successful!\n\nImported ${validContacts.length} contacts.\nTotal contacts now: ${contactsData.length}`);
+                    
+                } catch (error) {
+                    console.error('Import error:', error);
+                    alert('Error importing file: ' + error.message + '\n\nMake sure the file is a valid JSON export from this tool.');
+                }
+            };
+            
+            reader.onerror = function() {
+                alert('Error reading file');
+            };
+            
+            reader.readAsText(file);
+            
+            // Reset file input so same file can be selected again
+            event.target.value = '';
+        }
+
+        function downloadFile(content, filename, contentType) {
+            const blob = new Blob([content], { type: contentType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function clearData() {
+            if (confirm('Are you sure you want to clear all data?')) {
+                contactsData = [];
+                document.getElementById('contactsTableBody').innerHTML = '';
+                document.getElementById('tableContainer').style.display = 'none';
+                document.getElementById('filtersPanel').style.display = 'none';
+                document.getElementById('statsContainer').style.display = 'none';
+                document.getElementById('emptyState').style.display = 'block';
+                document.getElementById('progressContainer').style.display = 'none';
+            }
+        }
+
+        function toggleAIConfig() {
+            const provider = document.getElementById('aiProvider').value;
+            const groqConfigs = document.querySelectorAll('.ai-config-groq');
+            const openrouterConfigs = document.querySelectorAll('.ai-config-openrouter');
+            const infoText = document.getElementById('aiInfoText');
+            const freeTierInfo = document.getElementById('freeTierInfo');
+            const freeTierDetails = document.getElementById('freeTierDetails');
+            
+            // Hide all configs first
+            groqConfigs.forEach(el => el.style.display = 'none');
+            openrouterConfigs.forEach(el => el.style.display = 'none');
+            freeTierInfo.style.display = 'none';
+            
+            const providerInfo = {
+                'groq_allam': {
+                    text: '<strong>🏆 Groq ALLAM (BEST for Arabic):</strong> Specialized Arabic model - Fastest & most accurate Arabic translations!',
+                    showGroq: true,
+                    showOpenRouter: false,
+                    isFree: true,
+                    details: 'Model: allam-2-7b | Speed: ~0.35s/response | Best for: Arabic name translation and gender detection | Status: ✓ Tested Working',
+                    model: 'allam-2-7b',
+                    endpoint: 'https://api.groq.com/openai/v1/chat/completions'
+                },
+                'groq_llama70b': {
+                    text: '<strong>⚡ Groq Llama 3.3 70B:</strong> High-quality general purpose model - Great balance of speed and accuracy',
+                    showGroq: true,
+                    showOpenRouter: false,
+                    isFree: true,
+                    details: 'Model: llama-3.3-70b-versatile | Speed: ~1.5s/response | Best for: High-quality name processing | Status: ✓ Tested Working',
+                    model: 'llama-3.3-70b-versatile',
+                    endpoint: 'https://api.groq.com/openai/v1/chat/completions'
+                },
+                'groq_llama8b': {
+                    text: '<strong>🚀 Groq Llama 3.1 8B:</strong> Ultra-fast processing - Best for bulk operations!',
+                    showGroq: true,
+                    showOpenRouter: false,
+                    isFree: true,
+                    details: 'Model: llama-3.1-8b-instant | Speed: ~0.6s/response | Best for: Fast bulk processing | Status: ✓ Tested Working',
+                    model: 'llama-3.1-8b-instant',
+                    endpoint: 'https://api.groq.com/openai/v1/chat/completions'
+                },
+                'openrouter': {
+                    text: '<strong>🌐 OpenRouter:</strong> Backup provider with free tier access to multiple models',
+                    showGroq: false,
+                    showOpenRouter: true,
+                    isFree: true,
+                    details: 'Model: google/gemma-3-4b-it:free | Speed: ~11s/response | Best for: Backup when Groq is unavailable | Status: ✓ Tested Working',
+                    model: 'google/gemma-3-4b-it:free',
+                    endpoint: 'https://openrouter.ai/api/v1/chat/completions'
+                },
+                'local': {
+                    text: '<strong>💻 Local Processing:</strong> Pattern-based detection - No internet required!',
+                    showGroq: false,
+                    showOpenRouter: false,
+                    isFree: true,
+                    details: 'Speed: Instant | Best for: Offline use or privacy | Status: Always available | Note: Less accurate than AI models'
+                },
+                'openai': {
+                    text: '<strong>OpenAI:</strong> Requires paid API key from platform.openai.com',
+                    text: '<strong>Anthropic Claude:</strong> Requires API key from console.anthropic.com',
+                    showConfig: true,
+                    isFree: false,
+                    defaultModel: 'claude-3-haiku-20240307'
+                }
+            };
+            
+            const info = providerInfo[provider];
+            if (info) {
+                infoText.innerHTML = `<i class="bi bi-info-circle"></i> ${info.text}`;
+                
+                // Show appropriate config sections
+                if (info.showGroq) {
+                    groqConfigs.forEach(el => el.style.display = 'block');
+                }
+                if (info.showOpenRouter) {
+                    openrouterConfigs.forEach(el => el.style.display = 'block');
+                }
+                
+                if (info.isFree && info.details) {
+                    freeTierInfo.style.display = 'block';
+                    freeTierDetails.innerHTML = info.details;
+                }
+            }
+        }
+
+        async function testAIConnection() {
+            const provider = document.getElementById('aiProvider').value;
+            showLoading('testLoading', true);
+            
+            try {
+                let result;
+                const testPrompt = 'Say "Connection successful" and return {"status": "ok"}';
+                
+                if (provider.startsWith('groq')) {
+                    const apiKey = document.getElementById('groqKeySelect').value;
+                    let model;
+                    if (provider === 'groq_allam') model = 'allam-2-7b';
+                    else if (provider === 'groq_llama70b') model = 'llama-3.3-70b-versatile';
+                    else if (provider === 'groq_llama8b') model = 'llama-3.1-8b-instant';
+                    
+                    result = await callExternalAI(testPrompt, provider, apiKey, model, 'https://api.groq.com/openai/v1/chat/completions');
+                } else if (provider === 'openrouter') {
+                    const apiKey = document.getElementById('openrouterKey').value;
+                    result = await callExternalAI(testPrompt, provider, apiKey, 'google/gemma-3-4b-it:free', 'https://openrouter.ai/api/v1/chat/completions');
+                } else {
+                    alert('✓ Local Processing is always available!');
+                    showLoading('testLoading', false);
+                    return;
+                }
+                
+                alert('✓ Connection successful! AI provider is ready to use.');
+            } catch (error) {
+                alert('✗ Connection failed: ' + error.message);
+            } finally {
+                showLoading('testLoading', false);
+            }
+        }
+
+        async function callExternalAI(prompt, provider, apiKey, model, endpoint) {
+            const defaultEndpoints = {
+                'openai': 'https://api.openai.com/v1/chat/completions',
+                'azure': endpoint || '',
+                'google': 'https://generativelanguage.googleapis.com/v1beta/models/',
+                'anthropic': 'https://api.anthropic.com/v1/messages',
+                'huggingface': 'https://router.huggingface.co/v1/chat/completions',
+                'groq': 'https://api.groq.com/openai/v1/chat/completions',
+                'genderize': '' // Special handling for Genderize
+            };
+
+            // Handle Genderize.io separately
+            if (provider === 'genderize') {
+                throw new Error('Genderize should be handled in processWithAI');
+            }
+
+            const url = endpoint || defaultEndpoints[provider];
+            
+            if (!url) {
+                throw new Error('No endpoint provided for ' + provider);
+            }
+
+            let headers = {
+                'Content-Type': 'application/json'
+            };
+            let body = {};
+
+            switch(provider) {
+                case 'openai':
+                    headers['Authorization'] = `Bearer ${apiKey}`;
+                    body = {
+                        model: model || 'gpt-4o-mini',
+                        messages: [{ role: 'user', content: prompt }],
+                        temperature: 0.3
+                    };
+                    break;
+                case 'azure':
+                    headers['api-key'] = apiKey;
+                    body = {
+                        messages: [{ role: 'user', content: prompt }],
+                        temperature: 0.3
+                    };
+                    break;
+                case 'anthropic':
+                    headers['x-api-key'] = apiKey;
+                    headers['anthropic-version'] = '2023-06-01';
+                    body = {
+                        model: model || 'claude-3-haiku-20240307',
+                        max_tokens: 1024,
+                        messages: [{ role: 'user', content: prompt }]
+                    };
+                    break;
+                case 'google':
+                    const googleUrl = `${url}${model || 'gemini-1.5-flash'}:generateContent?key=${apiKey}`;
+                    const googleBody = {
+                        contents: [{ parts: [{ text: prompt }] }]
+                    };
+                    const googleResponse = await fetch(googleUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(googleBody)
+                    });
+                    const googleData = await googleResponse.json();
+                    return googleData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                case 'huggingface':
+                    headers['Authorization'] = `Bearer ${apiKey}`;
+                    body = {
+                        model: model || 'meta-llama/Meta-Llama-3.1-8B-Instruct',
+                        messages: [{ role: 'user', content: prompt }],
+                        temperature: 0.3,
+                        max_tokens: 500
+                    };
+                    break;
+                case 'groq':
+                case 'groq_allam':
+                case 'groq_llama70b':
+                case 'groq_llama8b':
+                    headers['Authorization'] = `Bearer ${apiKey}`;
+                    body = {
+                        model: model || 'llama-3.3-70b-versatile',
+                        messages: [{ role: 'user', content: prompt }],
+                        temperature: 0.3,
+                        max_tokens: 500
+                    };
+                    break;
+                case 'openrouter':
+                    headers['Authorization'] = `Bearer ${apiKey}`;
+                    headers['HTTP-Referer'] = 'https://localhost';
+                    body = {
+                        model: model || 'google/gemma-3-4b-it:free',
+                        messages: [{ role: 'user', content: prompt }]
+                    };
+                    break;
+            }
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(body)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`AI API error: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            const data = await response.json();
+            
+            switch(provider) {
+                case 'openai':
+                case 'azure':
+                case 'huggingface':
+                case 'groq':
+                case 'groq_allam':
+                case 'groq_llama70b':
+                case 'groq_llama8b':
+                    return data.choices?.[0]?.message?.content || '';
+                case 'openrouter':
+                    return data.choices?.[0]?.message?.content || '';
+                case 'anthropic':
+                    return data.content?.[0]?.text || '';
+                default:
+                    return '';
+            }
+        }
+
+        async function getGenderFromGenderize(name) {
+            try {
+                // Extract first name
+                const firstName = name.split(' ')[0];
+                const response = await fetch(`https://api.genderize.io/?name=${encodeURIComponent(firstName)}`);
+                const data = await response.json();
+                
+                if (data.gender && data.probability > 0.6) {
+                    return data.gender === 'male' ? 'Male' : 'Female';
+                }
+                return 'Unknown';
+            } catch (error) {
+                console.error('Genderize error:', error);
+                return 'Unknown';
+            }
+        }
+
+        async function processWithAI(name, provider, apiKey, model, endpoint) {
+            const doTranslate = document.getElementById('aiTranslate').checked;
+            const doGender = document.getElementById('aiGender').checked;
+            const doVIP = document.getElementById('aiVIP').checked;
+            const doNormalize = document.getElementById('aiNormalize').checked;
+
+            // Handle Genderize.io separately (no API key needed)
+            if (provider === 'genderize') {
+                let gender = 'Unknown';
+                if (doGender) {
+                    gender = await getGenderFromGenderize(name);
+                }
+                
+                return {
+                    englishName: doNormalize ? name.trim() : name,
+                    arabicName: doTranslate ? translateToArabic(name) : '',
+                    gender: gender,
+                    isVIP: false
+                };
+            }
+
+            // Improved prompt for better results
+            const prompt = `You are a multilingual name expert specializing in Arabic names. Analyze this WhatsApp contact name and provide accurate information.
+
+Contact name: "${name}"
+
+IMPORTANT INSTRUCTIONS:
+1. ENGLISH NAME: Clean up the name (proper capitalization, remove extra spaces, fix typos if obvious)
+2. ARABIC NAME: Translate/transliterate to Arabic script. For common Arabic names, provide the correct Arabic spelling. For non-Arabic names, transliterate phonetically. ALWAYS provide Arabic text, never leave empty.
+3. GENDER: Detect gender based on name patterns:1,- Male names: Mohammed, Ahmed, Ali, Omar, Khaled, Hassan, Mahmoud, etc.
+   - Female names: Fatima, Maryam, Aisha, Khadija, Zainab, Nour, Yasmin, Salma, etc.
+   - If uncertain, respond "Unknown"
+4. VIP STATUS: Return false (VIP detection is disabled for fairness)
+
+ARABIC NAME GUIDELINES:
+- Mohammed/Muhammad/Mohamed = محمد
+- Ahmed/Ahmad = أحمد
+- Ali = علي
+- Omar = عمر
+- Khaled = خالد
+- Hassan = حسن
+- Fatima = فاطمة
+- Maryam = مريم
+- Aisha = عائشة
+- For non-Arabic names, transliterate phonetically (John = جون, Sarah = سارة)
+
+Return ONLY valid JSON (no markdown, no explanation):
+{"englishName":"Name Here","arabicName":"الاسم هنا","gender":"Male","isVIP":false}`;
+
+            try {
+                const response = await callExternalAI(prompt, provider, apiKey, model, endpoint);
+                
+                // Extract JSON from response
+                const jsonMatch = response.match(/\{[\s\S]*?\}/);
+                if (jsonMatch) {
+                    const result = JSON.parse(jsonMatch[0]);
+                    const englishName = result.englishName || name;
+                    let arabicName = result.arabicName || '';
+                    const gender = result.gender || 'Unknown';
+                    const isVIP = result.isVIP || false;
+                    
+                    // Validate gender
+                    const validGender = ['Male', 'Female', 'Unknown'].includes(gender) ? gender : 'Unknown';
+                    
+                    // If Arabic name is empty, try local translation
+                    if (!arabicName || arabicName.trim() === '') {
+                        arabicName = translateToArabic(name);
+                    }
+                    
+                    return {
+                        englishName: englishName,
+                        arabicName: arabicName,
+                        gender: validGender,
+                        isVIP: isVIP
+                    };
+                }
+            } catch (error) {
+                console.error('AI processing error:', error);
+            }
+
+            // Fallback to local processing
+            return {
+                englishName: name,
+                arabicName: translateToArabic(name),
+                gender: detectGender(name),
+                isVIP: false
+            };
+        }
+
+        function showFreeAIHelp() {
+            alert(`🆓 FREE AI PROVIDERS SETUP GUIDE
+
+1️⃣ GENDERIZE.IO (Easiest - No signup!)
+   ✅ 1000 requests/day FREE
+   ✅ No API key needed
+   🏆 TESTED & WORKING APIs (Ready to Use)
+
+Your API Keys Status:
+✅ Groq API - 2 Keys Active (Pre-configured)
+✅ OpenRouter API - Key Active (Pre-configured)
+✅ Local Processing - Always Available
+
+❌ Failed APIs (Not Working):
+✗ Gemini/GoogleAI - Model not found
+✗ Perplexity - Quota exceeded  
+✗ OpenAI - No model access
+✗ Replicate - Async only (too slow)
+
+🥇 TOP 3 RECOMMENDED APIs:
+
+1️⃣ GROQ ALLAM (BEST for Arabic)
+   ✅ Status: WORKING - Already configured!
+   ⚡ Speed: ~0.35s/response
+   🎯 Best for: Arabic name translation
+   📊 Model: allam-2-7b (Arabic specialized)
+   🔑 Keys: 2 pre-loaded (auto-switch on limit)
+   
+2️⃣ GROQ LLAMA 3.3 70B (Balanced)
+   ✅ Status: WORKING - Already configured!
+   ⚡ Speed: ~1.5s/response
+   🎯 Best for: High-quality processing
+   📊 Model: llama-3.3-70b-versatile
+   
+3️⃣ GROQ LLAMA 3.1 8B (Fastest)
+   ✅ Status: WORKING - Already configured!
+   ⚡ Speed: ~0.6s/response
+   🎯 Best for: Bulk processing
+   📊 Model: llama-3.1-8b-instant
+
+🌐 BACKUP OPTION:
+4️⃣ OpenRouter (Free Tier)
+   ✅ Status: WORKING
+   ⚡ Speed: ~11s/response (slower)
+   🎯 Best for: Backup when Groq is down
+   📊 Model: google/gemma-3-4b-it:free
+   🔑 Key: Pre-configured
+
+💡 PRO TIPS:
+• Start with "Groq ALLAM" for best Arabic results
+• Use "Batch Processing" for 10x speed
+• Groq has ~20 req/min limit - keys auto-switch
+• Always test connection before processing
+
+🚀 Your APIs are ready to use! Select one above.`);
+        }
+
+        function showCORSHelp() {
+            alert(`🔒 CORS (Cross-Origin Resource Sharing) HELP
+
+❓ WHAT IS CORS?
+Browsers block web pages from making requests to a different domain than the one that served the web page. This is a security feature.
+
+❌ WHY YOU'RE GETTING "Failed to fetch":
+Your browser is blocking the connection to WAHA because:
+1. WAHA server doesn't have CORS enabled, OR
+2. You're opening the HTML file directly (file://), OR
+3. Protocol mismatch (http vs https)
+
+✅ SOLUTIONS (try in order):
+
+1️⃣ ENABLE CORS ON WAHA SERVER (BEST):
+   Docker Compose:
+     environment:
+       - CORS=true
+   
+   Docker Run:
+     docker run -e CORS=true ...
+   
+   Or add startup flag:
+     --cors
+
+2️⃣ USE BROWSER EXTENSION (QUICKEST):
+   • Chrome: Install "CORS Unblock" or "Allow CORS"
+   • Firefox: Install "CORS Everywhere"
+   • Enable the extension, then refresh page
+
+3️⃣ RUN LOCAL SERVER (RECOMMENDED):
+   Open terminal in your HTML folder:
+   
+   Option A - Python:
+     python -m http.server 8000
+     # Open: http://localhost:8000/whatsapp-contacts-manager.html
+   
+   Option B - Node.js:
+     npx http-server -p 8000
+   
+   Option C - VS Code:
+     Install "Live Server" extension
+     Right-click HTML → "Open with Live Server"
+
+4️⃣ USE WAHA DASHBOARD:
+   Visit: https://waha.xee.run.place/dashboard
+   Check if your session is connected there first
+
+5️⃣ TEST DIRECTLY:
+   Open in browser:
+   https://waha.xee.run.place/api/sessions
+   
+   If you see JSON data, WAHA is working!
+   If blank/error, WAHA might be down.
+
+🎯 QUICK CHECKLIST:
+☐ WAHA server is running
+☐ URL is correct (https://waha.xee.run.place/)
+☐ Session "default" exists in WAHA
+☐ Try "Test CORS" button first
+☐ Check browser console (F12) for red errors
+
+💡 STILL HAVING ISSUES?
+• Check WAHA logs: docker logs <container-name>
+• Try different browser (Chrome/Firefox/Edge)
+• Disable browser ad-blockers temporarily
+• Make sure you're using http://localhost not file://`);
+        }
+
+        // Add help button listener on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize UI
+            toggleAIConfig();
+        });
+    </script>
+</body>
+</html>

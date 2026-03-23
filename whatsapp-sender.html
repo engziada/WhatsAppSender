@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Message Sender</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); min-height: 100vh; }
+        .container { background: rgba(255,255,255,0.95); border-radius: 15px; padding: 30px; margin-top: 20px; margin-bottom: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        .template-card { border-left: 4px solid #667eea; background: #f8f9fa; }
+        .template-male { border-left-color: #2196f3; }
+        .template-female { border-left-color: #e91e63; }
+        .part-tag { cursor: pointer; transition: all 0.2s; }
+        .part-tag:hover { transform: scale(1.05); }
+        .part-enabled { opacity: 1; }
+        .part-disabled { opacity: 0.4; }
+        .send-progress { height: 30px; }
+        .send-log { max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.85em; }
+        .male-row { background-color: #e3f2fd !important; }
+        .female-row { background-color: #fce4ec !important; }
+        .excluded-row { background-color: #ffebee !important; }
+        .excluded-row td { color: #c62828 !important; text-decoration: line-through; }
+        .processed-row { background-color: #e8f5e9 !important; opacity: 0.7; }
+        .processed-row td { text-decoration: line-through; }
+        .rate-limit-warning { animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">
+            <i class="bi bi-send"></i> WhatsApp Message Sender
+        </h1>
+
+        <!-- WAHA Configuration -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> WAHA API Configuration</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <label class="form-label">WAHA API URL</label>
+                        <input type="text" class="form-control" id="wahaUrl" value="https://waha.xee.run.place/" placeholder="https://your-waha-instance.com/">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">API Key (if required)</label>
+                        <input type="password" class="form-control" id="apiKey" placeholder="Enter API Key">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Session Name</label>
+                        <input type="text" class="form-control" id="sessionName" value="default" placeholder="default">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-outline-info btn-sm w-100" onclick="testConnection()">Test Connection</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+
+        <!-- Import Contacts -->
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-file-earmark-arrow-up"></i> Import Contacts</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <p class="text-muted mb-2">Import contacts from JSON</p>
+                        <input type="file" id="importFileInput" accept=".json" class="form-control" onchange="importContacts(event)">
+                    </div>
+                    <div class="col-md-4">
+                        <p class="text-muted mb-2">Import Session Log (mark as processed)</p>
+                        <input type="file" id="importLogInput" accept=".json" class="form-control mb-1" onchange="importSessionLog(event)">
+                        <button class="btn btn-sm btn-outline-success w-100" onclick="loadSessionLogsFromStorage()">Load Stored Logs</button>
+                    </div>
+                    <div class="col-md-4">
+                        <p class="text-muted mb-2">Load sample data</p>
+                        <button class="btn btn-outline-secondary w-100 mb-2" onclick="loadSampleData()">Load Sample Contacts</button>
+                        <hr class="my-2">
+                        <p class="text-muted mb-1"><strong>Check WAHA History</strong></p>
+                        <input type="text" class="form-control form-control-sm mb-1" id="wahaSearchPhrases" placeholder="Phrases (comma-separated)" value="كل سنة وإنت طيب, كل سنة وإنتي طيبة, عيد سعيد">
+                        <select class="form-select form-select-sm mb-1" id="wahaSearchLogic">
+                            <option value="or">Match ANY phrase (OR)</option>
+                            <option value="and">Match ALL phrases (AND)</option>
+                        </select>
+                        <button class="btn btn-outline-info btn-sm w-100" onclick="checkWahaHistory()">Check History</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Name Parts Configuration -->
+        <div class="card mb-4">
+            <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-person-badge"></i> Name Parts Configuration</h5>
+                <div>
+                    <button class="btn btn-sm btn-light" onclick="exportContacts()">Export JSON</button>
+                    <button class="btn btn-sm btn-warning" onclick="selectAllParts()">Select All Parts</button>
+                    <button class="btn btn-sm btn-secondary" onclick="deselectAllParts()">Deselect All</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="resetProcessed()">Reset Processed</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info mb-3">
+                    <strong><i class="bi bi-info-circle"></i> How it works:</strong><br>
+                    Each contact name is split into parts. Check the parts you want to use in messages, and they will be personalized automatically.<br>
+                    <strong>Example:</strong> "أحمد باشا" → Salute: "", First: "أحمد", Last: "باشا"
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="searchBox" placeholder="Search by name or phone..." onkeypress="if(event.key==='Enter') filterContacts()">
+                            <button class="btn btn-outline-secondary" onclick="filterContacts()">Search</button>
+                            <button class="btn btn-outline-danger" onclick="clearSearch()">Clear</button>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="row">
+                            <div class="col-12 mb-2">
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-sm btn-outline-primary active" onclick="setStatusFilter('all')" id="filterAll">All</button>
+                                    <button class="btn btn-sm btn-outline-success" onclick="setStatusFilter('pending')" id="filterPending">Pending</button>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="setStatusFilter('processed')" id="filterProcessed">Processed</button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="setStatusFilter('excluded')" id="filterExcluded">Excluded</button>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="d-flex gap-2">
+                                    <select class="form-select form-select-sm" id="filterGender" onchange="applyFilters()" style="width: auto;">
+                                        <option value="all">All Genders</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                    </select>
+                                    <select class="form-select form-select-sm" id="filterUseSalute" onchange="applyFilters()" style="width: auto;">
+                                        <option value="all">All Salute</option>
+                                        <option value="yes">Using Salute</option>
+                                        <option value="no">Not Using Salute</option>
+                                    </select>
+                                    <select class="form-select form-select-sm" id="filterHasSuffix" onchange="applyFilters()" style="width: auto;">
+                                        <option value="all">All Suffix</option>
+                                        <option value="yes">Has Suffix</option>
+                                        <option value="no">No Suffix</option>
+                                    </select>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="resetFilters()">Reset Filters</button>
+                                </div>
+                            </div>
+                        </div>
+                        <span class="ms-3 text-muted" id="contactCount">0 contacts</span>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="contactsTable" style="width:100%">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>#</th>
+                                <th>Phone</th>
+                                <th>Original Name</th>
+                                <th>Gender</th>
+                                <th>Salute (Prefix)</th>
+                                <th>First Name</th>
+                                <th>Last Name</th>
+                                <th>Use Salute</th>
+                                <th>Use First</th>
+                                <th>Use Last</th>
+                                <th>Suffix</th>
+                                <th>Processed</th>
+                                <th>Preview</th>
+                            </tr>
+                        </thead>
+                        <tbody id="contactsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Message Templates -->
+        <div class="card mb-4">
+            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-chat-quote"></i> Message Templates</h5>
+                <div>
+                    <button class="btn btn-sm btn-success" onclick="saveTemplates()">Save Templates</button>
+                    <button class="btn btn-sm btn-info" onclick="loadTemplates()">Load Templates</button>
+                    <button class="btn btn-sm btn-secondary" onclick="resetTemplates()">Reset Defaults</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- Male Template -->
+                    <div class="col-md-6 mb-3">
+                        <div class="card template-card template-male">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0"><i class="bi bi-person"></i> Male Template</h6>
+                            </div>
+                            <div class="card-body">
+                                <textarea class="form-control" id="templateMale" rows="4" placeholder="مرحباً {{salute}} {{first}} {{last}}{{suffix}}...">{{salute}} {{first}} {{last}}{{suffix}}</textarea>
+                                <small class="text-muted mt-2 d-block">Placeholders: <code>{{salute}}</code> <code>{{first}}</code> <code>{{last}}</code> <code>{{suffix}}</code></small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Female Template -->
+                    <div class="col-md-6 mb-3">
+                        <div class="card template-card template-female">
+                            <div class="card-header bg-danger text-white">
+                                <h6 class="mb-0"><i class="bi bi-person-hearts"></i> Female Template</h6>
+                            </div>
+                            <div class="card-body">
+                                <textarea class="form-control" id="templateFemale" rows="4" placeholder="مرحباً {{salute}} {{first}} {{last}}{{suffix}}...">{{salute}} {{first}} {{last}}{{suffix}}</textarea>
+                                <small class="text-muted mt-2 d-block">Placeholders: <code>{{salute}}</code> <code>{{first}}</code> <code>{{last}}</code> <code>{{suffix}}</code></small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="alert alert-secondary mt-3">
+                    <strong><i class="bi bi-lightbulb"></i> Template Tips:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li><code>{{salute}}</code> - Inserts the selected salutation (e.g., "السيد", "الحاج", "أخي")</li>
+                        <li><code>{{first}}</code> - First name only (e.g., "أحمد")</li>
+                        <li><code>{{last}}</code> - Last name/title (e.g., "باشا", "بك", "هانم")</li>
+                        <li><code>{{suffix}}</code> - Suffix you specify below (e.g., "الكريم", "الغالي")</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Send Configuration -->
+        <div class="card mb-4">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-send-fill"></i> Send Messages</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label class="form-label">Max Retries on Failure</label>
+                        <input type="number" class="form-control" id="maxRetries" value="3" min="0" max="5">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">&nbsp;</label>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-danger" onclick="startSending()" id="sendBtn">
+                                <i class="bi bi-send"></i> Start Sending
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-outline-warning w-100" onclick="sendTestMessage()">
+                            <i class="bi bi-send-check"></i> Send Test Message
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-2">
+                        <label class="form-label">Min Delay (sec)</label>
+                        <input type="number" class="form-control" id="minDelaySec" value="8" min="5" max="60">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Max Delay (sec)</label>
+                        <input type="number" class="form-control" id="maxDelaySec" value="15" min="5" max="120">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Warm-up Msgs</label>
+                        <input type="number" class="form-control" id="warmupCount" value="20" min="0" max="100">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Batch Size</label>
+                        <input type="number" class="form-control" id="batchSize" value="100" min="10" max="500">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Break (min)</label>
+                        <input type="number" class="form-control" id="breakMinutes" value="15" min="5" max="60">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Daily Cap</label>
+                        <input type="number" class="form-control" id="dailyCap" value="0" min="0" placeholder="0 = unlimited">
+                        <small class="text-muted">0 = no limit</small>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="skipProcessed" checked>
+                            <label class="form-check-label" for="skipProcessed">Skip already processed</label>
+                        </div>
+                    </div>
+                    <div class="col-9">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="sendMale" checked>
+                            <label class="form-check-label" for="sendMale">Males</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="sendFemale" checked>
+                            <label class="form-check-label" for="sendFemale">Females</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="alert alert-info mt-3 mb-0">
+                    <strong>Estimated time for 1000 messages:</strong> <span id="estimatedTime">-</span>
+                    <button type="button" class="btn btn-sm btn-outline-info ms-2" onclick="calculateEstimatedTime()">Recalculate</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress & Log -->
+        <div class="card mb-4" id="progressCard" style="display: none;">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> Sending Progress</h5>
+                <button class="btn btn-sm btn-light" onclick="stopSending()">Stop</button>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h4 id="totalToSend">0</h4>
+                            <p class="mb-0">Total to Send</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h4 id="sentCount">0</h4>
+                            <p class="mb-0">Sent</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h4 id="failedCount">0</h4>
+                            <p class="mb-0">Failed</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h4 id="remainingCount">0</h4>
+                            <p class="mb-0">Remaining</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="progress send-progress mb-3">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" id="sendProgressBar" style="width: 0%"></div>
+                </div>
+                
+                <div class="form-check form-check-inline mb-2">
+                    <input class="form-check-input" type="checkbox" id="autoScrollLog" checked>
+                    <label class="form-check-label" for="autoScrollLog">Auto-scroll log</label>
+                </div>
+                
+                <div class="send-log bg-dark text-light p-3 rounded" id="sendLog">
+                </div>
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="text-center py-5">
+            <i class="bi bi-inbox" style="font-size: 4rem; color: #ccc;"></i>
+            <h4 class="mt-3 text-muted">No contacts loaded</h4>
+            <p class="text-muted">Import a JSON file or load sample data to get started</p>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    
+    <script>
+        let contactsData = [];
+        let dataTable = null;
+        let isSending = false;
+        let shouldStop = false;
+        let sendQueue = [];
+        let currentStatusFilter = 'all';
+        let searchQuery = '';
+        let sessionLog = [];
+
+        // Common Arabic name titles/suffixes
+        const maleTitles = ['باشا', 'بك', 'أفندي', 'افندم', 'مستر', 'حاج', 'أخي', 'الشيخ', 'الكبير'];
+        const femaleTitles = ['هانم', 'خانم', 'سيدة', 'مستر', 'حاجة', 'أختاه', 'بنتي', 'الغالية', 'الكريمة'];
+
+        // Default templates
+        const defaultTemplates = {
+            male: 'تحية طيبة وبعد،\n\n{{salute}} {{first}} {{last}}{{suffix}}،\n\nرسالة اختبارية',
+            female: 'تحية طيبة وبعد،\n\n{{salute}} {{first}} {{last}}{{suffix}}،\n\nرسالة اختبارية'
+        };
+
+        function importContacts(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (!Array.isArray(data)) {
+                        alert('Invalid file format. Expected an array of contacts.');
+                        return;
+                    }
+                    processImportedContacts(data);
+                } catch (error) {
+                    alert('Error reading file: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        function importSessionLog(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    let logEntries = [];
+                    
+                    if (Array.isArray(data)) {
+                        logEntries = data;
+                    } else if (data.messages) {
+                        logEntries = [data];
+                    }
+                    
+                    const sentPhones = new Set();
+                    logEntries.forEach(session => {
+                        if (session.messages) {
+                            session.messages.forEach(msg => {
+                                if (msg.status === 'sent' && msg.phone) {
+                                    const cleanPhone = msg.phone.replace(/\D/g, '');
+                                    sentPhones.add(cleanPhone);
+                                }
+                            });
+                        }
+                    });
+                    
+                    if (sentPhones.size === 0) {
+                        alert('No sent messages found in this session log.');
+                        return;
+                    }
+                    
+                    let matched = 0;
+                    contactsData.forEach(contact => {
+                        const cleanPhone = contact.phone.replace(/\D/g, '');
+                        if (sentPhones.has(cleanPhone)) {
+                            contact.isProcessed = true;
+                            matched++;
+                        }
+                    });
+                    
+                    displayContacts();
+                    alert(`Marked ${matched} contacts as processed from session log.`);
+                } catch (error) {
+                    alert('Error reading session log: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        async function checkWahaHistory() {
+            if (contactsData.length === 0) {
+                alert('No contacts loaded. Please import contacts first.');
+                return;
+            }
+            
+            const url = document.getElementById('wahaUrl').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const session = document.getElementById('sessionName').value.trim() || 'default';
+            
+            if (!url) {
+                alert('Please enter WAHA API URL');
+                return;
+            }
+            
+            const baseUrl = url.endsWith('/') ? url : url + '/';
+            
+            // Get search phrases and logic from inputs
+            const phrasesInput = document.getElementById('wahaSearchPhrases').value.trim();
+            const searchLogic = document.getElementById('wahaSearchLogic').value;
+            
+            if (!phrasesInput) {
+                alert('Please enter search phrases');
+                return;
+            }
+            
+            // Parse phrases (comma-separated)
+            const searchPatterns = phrasesInput.split(',').map(p => p.trim()).filter(p => p);
+            
+            if (searchPatterns.length === 0) {
+                alert('Please enter at least one search phrase');
+                return;
+            }
+            
+            if (!confirm(`Check WAHA chat history for ${contactsData.length} contacts?\n\nSearch phrases (${searchLogic.toUpperCase()}):\n${searchPatterns.join('\n')}\n\nThis may take a few minutes.`)) {
+                return;
+            }
+            
+            document.getElementById('progressCard').style.display = 'block';
+            document.getElementById('sendLog').innerHTML = '';
+            log('<span class="text-info">=== Checking WAHA Chat History ===</span>');
+            
+            let checked = 0;
+            let marked = 0;
+            
+            shouldStop = false;
+            
+            for (let i = 0; i < contactsData.length; i++) {
+                if (shouldStop) {
+                    log('<span class="text-warning">⏹ Checking stopped by user</span>');
+                    break;
+                }
+                
+                const contact = contactsData[i];
+                const cleanPhone = contact.phone.replace(/\D/g, '');
+                const chatId = encodeURIComponent(cleanPhone + '@c.us');
+                
+                try {
+                    const fetchOptions = { method: 'GET' };
+                    if (apiKey) {
+                        fetchOptions.headers = { 'X-Api-Key': apiKey };
+                    }
+                    
+                    const response = await fetch(`${baseUrl}api/${session}/chats/${chatId}/messages?limit=20&sortBy=timestamp&downloadMedia=false&merge=true`, fetchOptions);
+                    
+                    if (response.ok) {
+                        const messages = await response.json();
+                        
+                        if (messages && messages.length > 0) {
+                            // Check for outgoing messages matching search criteria
+                            const hasOutgoing = messages.some(msg => {
+                                if (msg.fromMe !== true) return false;
+                                
+                                const body = (msg.body || '').toLowerCase();
+                                const patterns = searchPatterns.map(p => p.toLowerCase());
+                                
+                                if (searchLogic === 'and') {
+                                    // ALL phrases must be present (AND)
+                                    return patterns.every(pattern => body.includes(pattern));
+                                } else {
+                                    // ANY phrase can be present (OR)
+                                    return patterns.some(pattern => body.includes(pattern));
+                                }
+                            });
+                            
+                            if (hasOutgoing) {
+                                contact.isProcessed = true;
+                                marked++;
+                                log(`<span class="text-success">✓ ${contact.phone} - match found</span>`);
+                            } else {
+                                log(`<span class="text-light">${contact.phone} - no match</span>`);
+                            }
+                        } else {
+                            log(`<span class="text-light">${contact.phone} - no messages</span>`);
+                        }
+                    } else if (response.status === 404) {
+                        log(`<span class="text-light">${contact.phone} - no chat</span>`);
+                    } else {
+                        log(`<span class="text-warning">${contact.phone} - error ${response.status}</span>`);
+                    }
+                } catch (error) {
+                    log(`<span class="text-danger">${contact.phone} - ${error.message}</span>`);
+                }
+                
+                checked++;
+                updateProgress(checked, contactsData.length);
+                
+                // Small delay between requests
+                if (i < contactsData.length - 1 && !shouldStop) {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
+            }
+            
+            displayContacts();
+            log(`<br><strong>=== Check Complete ===</strong>`);
+            log(`<span class="text-info">Checked: ${checked} contacts</span>`);
+            log(`<span class="text-success">Marked as processed: ${marked}</span>`);
+            
+            alert(`Checked ${checked} contacts. ${marked} marked as processed.`);
+        }
+
+        function processImportedContacts(contacts) {
+            contactsData = contacts.map((c, index) => {
+                const arabicName = c.arabicName || '';
+                const englishName = c.englishName || c.originalName || '';
+                const parts = parseArabicName(arabicName);
+                
+                return {
+                    id: index,
+                    phone: c.phone || '',
+                    originalName: arabicName,
+                    englishName: englishName,
+                    gender: c.gender || 'Male',
+                    salute: c.salute || parts.salute || '',
+                    first: c.first || parts.first || '',
+                    last: c.last || parts.last || '',
+                    useSalute: c.useSalute !== undefined ? c.useSalute : false,
+                    useFirst: c.useFirst !== undefined ? c.useFirst : true,
+                    useLast: c.useLast !== undefined ? c.useLast : false,
+                    suffix: (c.suffix || '').trim(),
+                    isProcessed: c.isProcessed === true || c.isProcessed === false ? c.isProcessed : false
+                };
+            });
+
+            displayContacts();            
+            const emptyState = document.getElementById('emptyState');
+            if (emptyState) emptyState.style.display = 'none';
+            
+            const processedCount = contactsData.filter(c => c.isProcessed).length;
+            alert(`Imported ${contactsData.length} contacts (${processedCount} already processed)`);
+        }
+
+        function parseArabicName(name) {
+            const trimmed = name.trim();
+            
+            // Check for common prefixes (salutations)
+            let salute = '';
+            let remaining = trimmed;
+            
+            const salutePatterns = [
+                { pattern: /^(السيد|الحاج|الأستاذ|الحاج|mr\.?|mister|master)\s+/i, type: 'male' },
+                { pattern: /^(السيدة|الأستاذة|الآنسة|حاجة|hanim|hanoum)\s+/i, type: 'female' }
+            ];
+            
+            for (const { pattern } of salutePatterns) {
+                const match = trimmed.match(pattern);
+                if (match) {
+                    salute = match[1];
+                    remaining = trimmed.slice(match[0].length).trim();
+                    break;
+                }
+            }
+            
+            // Split remaining into parts
+            const parts = remaining.split(/\s+/);
+            
+            let first = '';
+            let last = '';
+            
+            if (parts.length >= 2) {
+                // Last word is usually the title/ surname
+                last = parts[parts.length - 1];
+                // First name is the first word
+                first = parts[0];
+            } else if (parts.length === 1) {
+                first = parts[0];
+            }
+            
+            // If last matches common titles, keep it
+            const allTitles = [...maleTitles, ...femaleTitles];
+            const lastLower = last.toLowerCase();
+            const isTitle = allTitles.some(t => t.toLowerCase() === lastLower || t.toLowerCase().includes(lastLower));
+            
+            if (!isTitle && parts.length > 2) {
+                // If last isn't a title, it might be part of first name
+                // Move it to first
+                first = parts.slice(0, -1).join(' ');
+                last = parts[parts.length - 1];
+            }
+            
+            return { salute, first, last };
+        }
+
+        function loadSampleData() {
+            const sampleContacts = [
+                { phone: '201234567890', arabicName: 'أحمد باشا', englishName: 'Ahmed Pasha', gender: 'Male' },
+                { phone: '201234567891', arabicName: 'محمد بك', englishName: 'Mohamed Bey', gender: 'Male' },
+                { phone: '201234567892', arabicName: 'هبة هانم', englishName: 'Heba Hanem', gender: 'Female' },
+                { phone: '201234567893', arabicName: 'فاطمة السيد', englishName: 'Fatima El-Sayyed', gender: 'Female' },
+                { phone: '201234567894', arabicName: 'خالد alaa', englishName: 'Khaled Alaa', gender: 'Male' },
+                { phone: '201234567895', arabicName: 'نورة الكريمة', englishName: 'Nora Al-Karima', gender: 'Female' },
+                { phone: '201234567896', arabicName: 'عمر سعيد', englishName: 'Omar Said', gender: 'Male' },
+                { phone: '201234567897', arabicName: 'سارة أحمد', englishName: 'Sarah Ahmed', gender: 'Female' },
+                { phone: '201234567898', arabicName: 'يوسف Hassan', englishName: 'Youssef Hassan', gender: 'Male' },
+                { phone: '201234567899', arabicName: 'ليلى Hanem', englishName: 'Leila Hanem', gender: 'Female', isProcessed: true }
+            ];
+            
+            processImportedContacts(sampleContacts);
+        }
+
+        function displayContacts() {
+            const tbody = document.getElementById('contactsTableBody');
+            tbody.innerHTML = '';
+            
+            // Get filter values
+            const genderFilter = document.getElementById('filterGender').value;
+            const useSaluteFilter = document.getElementById('filterUseSalute').value;
+            const hasSuffixFilter = document.getElementById('filterHasSuffix').value;
+            
+            const filteredData = contactsData.filter(c => {
+                // Status filter
+                if (currentStatusFilter === 'pending' && c.isProcessed) return false;
+                if (currentStatusFilter === 'processed' && !c.isProcessed) return false;
+                if (currentStatusFilter === 'excluded' && (c.useSalute || c.useFirst || c.useLast)) return false;
+                
+                // Gender filter
+                if (genderFilter !== 'all' && c.gender !== genderFilter) return false;
+                
+                // Use Salute filter
+                if (useSaluteFilter === 'yes' && !c.useSalute) return false;
+                if (useSaluteFilter === 'no' && c.useSalute) return false;
+                
+                // Has Suffix filter
+                const hasSuffix = c.suffix && c.suffix.trim() !== '';
+                if (hasSuffixFilter === 'yes' && !hasSuffix) return false;
+                if (hasSuffixFilter === 'no' && hasSuffix) return false;
+                
+                // Search query
+                if (searchQuery) {
+                    const query = searchQuery.toLowerCase();
+                    const phone = (c.phone || '').toLowerCase();
+                    const originalName = (c.originalName || '').toLowerCase();
+                    const arabicName = (c.arabicName || '').toLowerCase();
+                    const englishName = (c.englishName || '').toLowerCase();
+                    const salute = (c.salute || '').toLowerCase();
+                    const first = (c.first || '').toLowerCase();
+                    const last = (c.last || '').toLowerCase();
+                    
+                    const matchesPhone = phone.includes(query);
+                    const matchesName = originalName.includes(query) || 
+                                       arabicName.includes(query) || 
+                                       englishName.includes(query) ||
+                                       salute.includes(query) ||
+                                       first.includes(query) ||
+                                       last.includes(query);
+                    
+                    if (!matchesPhone && !matchesName) return false;
+                }
+                return true;
+            });
+            
+            filteredData.forEach((contact, i) => {
+                const originalIndex = contactsData.indexOf(contact);
+                const row = createTableRow(contact, originalIndex);
+                tbody.appendChild(row);
+            });
+            
+            updateContactCount();
+        }
+
+        function createTableRow(contact, index) {
+            const row = document.createElement('tr');
+            row.id = `row-${index}`;
+            
+            const isExcluded = !contact.useSalute && !contact.useFirst && !contact.useLast;
+            
+            if (contact.isProcessed) {
+                row.classList.add('processed-row');
+            } else if (isExcluded) {
+                row.classList.add('excluded-row');
+            } else if (contact.gender === 'Male') {
+                row.classList.add('male-row');
+            } else if (contact.gender === 'Female') {
+                row.classList.add('female-row');
+            }
+            
+            const preview = buildPreview(contact);
+            const englishName = contact.englishName || contact.originalName || '';
+            
+            row.innerHTML = `
+                <td>${index + 1}</td>
+                <td>${contact.phone}</td>
+                <td><small class="text-muted">${englishName}</small></td>
+                <td>
+                    <select class="form-select form-select-sm" onchange="updateContact(${index}, 'gender', this.value)">
+                        <option value="Male" ${contact.gender === 'Male' ? 'selected' : ''}>Male</option>
+                        <option value="Female" ${contact.gender === 'Female' ? 'selected' : ''}>Female</option>
+                    </select>
+                </td>
+                <td><input type="text" class="form-control form-control-sm" value="${contact.salute}" onchange="updateContact(${index}, 'salute', this.value)"></td>
+                <td><input type="text" class="form-control form-control-sm" value="${contact.first}" onchange="updateContact(${index}, 'first', this.value)"></td>
+                <td><input type="text" class="form-control form-control-sm" value="${contact.last}" onchange="updateContact(${index}, 'last', this.value)"></td>
+                <td class="text-center">
+                    <input type="checkbox" class="form-check-input" ${contact.useSalute ? 'checked' : ''} onchange="updateContact(${index}, 'useSalute', this.checked)">
+                </td>
+                <td class="text-center">
+                    <input type="checkbox" class="form-check-input" ${contact.useFirst ? 'checked' : ''} onchange="updateContact(${index}, 'useFirst', this.checked)">
+                </td>
+                <td class="text-center">
+                    <input type="checkbox" class="form-check-input" ${contact.useLast ? 'checked' : ''} onchange="updateContact(${index}, 'useLast', this.checked)">
+                </td>
+                <td><input type="text" class="form-control form-control-sm" value="${contact.suffix}" placeholder="suffix..." onchange="updateContact(${index}, 'suffix', this.value)"></td>
+                <td class="text-center">
+                    <input type="checkbox" class="form-check-input" ${contact.isProcessed ? 'checked' : ''} onchange="toggleProcessed(${index}, this.checked)">
+                </td>
+                <td><small class="${isExcluded ? 'text-danger fw-bold' : 'text-muted'}">${isExcluded ? '⛔ ' : ''}${preview}</small></td>
+            `;
+            
+            return row;
+        }
+
+        function buildPreview(contact) {
+            const parts = [];
+            if (contact.useSalute && contact.salute) parts.push(contact.salute);
+            if (contact.useFirst && contact.first) parts.push(contact.first);
+            if (contact.useLast && contact.last) parts.push(contact.last);
+            
+            let result = parts.join(' ');
+            if (contact.suffix) result += contact.suffix;
+            
+            return result || '(no name parts selected)';
+        }
+
+        function updateContact(index, field, value) {
+            // Trim suffix field when updating
+            if (field === 'suffix') {
+                value = value.trim();
+            }
+            contactsData[index][field] = value;
+            
+            // Re-render the row to update excluded status
+            const row = document.getElementById(`row-${index}`);
+            if (row) {
+                const contact = contactsData[index];
+                const isExcluded = !contact.useSalute && !contact.useFirst && !contact.useLast;
+                const preview = buildPreview(contact);
+                
+                // Update preview cell (find it)
+                for (let i = 0; i < row.cells.length; i++) {
+                    if (row.cells[i].querySelector('small')) {
+                        row.cells[i].innerHTML = `<small class="${isExcluded ? 'text-danger fw-bold' : 'text-muted'}">${isExcluded ? '⛔ ' : ''}${preview}</small>`;
+                        break;
+                    }
+                }
+                
+                // Update row styling
+                row.classList.remove('excluded-row', 'male-row', 'female-row');
+                if (contact.isProcessed) {
+                    row.classList.add('processed-row');
+                } else if (isExcluded) {
+                    row.classList.add('excluded-row');
+                } else if (contact.gender === 'Male') {
+                    row.classList.add('male-row');
+                } else if (contact.gender === 'Female') {
+                    row.classList.add('female-row');
+                }
+            }
+        }
+
+        function toggleProcessed(index, checked) {
+            contactsData[index].isProcessed = checked;
+            const row = document.getElementById(`row-${index}`);
+            if (row) {
+                const contact = contactsData[index];
+                const isExcluded = !contact.useSalute && !contact.useFirst && !contact.useLast;
+                
+                row.classList.remove('excluded-row', 'male-row', 'female-row');
+                if (contact.isProcessed) {
+                    row.classList.add('processed-row');
+                } else if (isExcluded) {
+                    row.classList.add('excluded-row');
+                } else if (contact.gender === 'Male') {
+                    row.classList.add('male-row');
+                } else if (contact.gender === 'Female') {
+                    row.classList.add('female-row');
+                }
+            }
+            updateContactCount();
+        }
+
+        function markContactProcessed(index) {
+            const row = document.getElementById(`row-${index}`);
+            if (row) {
+                row.classList.remove('excluded-row', 'male-row', 'female-row');
+                row.classList.add('processed-row');
+                const cells = row.cells;
+                for (let i = 0; i < cells.length; i++) {
+                    const cb = cells[i].querySelector('input[type="checkbox"]');
+                    if (cb) {
+                        cb.checked = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        function setStatusFilter(filter) {
+            currentStatusFilter = filter;
+            document.querySelectorAll('[id^="filter"]').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('filter' + filter.charAt(0).toUpperCase() + filter.slice(1)).classList.add('active');
+            displayContacts();
+        }
+
+        function filterContacts() {
+            searchQuery = document.getElementById('searchBox').value.toLowerCase().trim();
+            displayContacts();
+        }
+
+        function clearSearch() {
+            document.getElementById('searchBox').value = '';
+            searchQuery = '';
+            displayContacts();
+        }
+
+        function applyFilters() {
+            displayContacts();
+        }
+
+        function resetFilters() {
+            document.getElementById('filterGender').value = 'all';
+            document.getElementById('filterUseSalute').value = 'all';
+            document.getElementById('filterHasSuffix').value = 'all';
+            displayContacts();
+        }
+
+        function updateContactCount() {
+            // Get filter values (same as displayContacts)
+            const genderFilter = document.getElementById('filterGender').value;
+            const useSaluteFilter = document.getElementById('filterUseSalute').value;
+            const hasSuffixFilter = document.getElementById('filterHasSuffix').value;
+            
+            const filtered = contactsData.filter(c => {
+                // Status filter
+                if (currentStatusFilter === 'pending' && c.isProcessed) return false;
+                if (currentStatusFilter === 'processed' && !c.isProcessed) return false;
+                if (currentStatusFilter === 'excluded' && (c.useSalute || c.useFirst || c.useLast)) return false;
+                
+                // Gender filter
+                if (genderFilter !== 'all' && c.gender !== genderFilter) return false;
+                
+                // Use Salute filter
+                if (useSaluteFilter === 'yes' && !c.useSalute) return false;
+                if (useSaluteFilter === 'no' && c.useSalute) return false;
+                
+                // Has Suffix filter
+                const hasSuffix = c.suffix && c.suffix.trim() !== '';
+                if (hasSuffixFilter === 'yes' && !hasSuffix) return false;
+                if (hasSuffixFilter === 'no' && hasSuffix) return false;
+                
+                // Search query
+                if (searchQuery) {
+                    const query = searchQuery.toLowerCase();
+                    const phone = (c.phone || '').toLowerCase();
+                    const originalName = (c.originalName || '').toLowerCase();
+                    const arabicName = (c.arabicName || '').toLowerCase();
+                    const englishName = (c.englishName || '').toLowerCase();
+                    const salute = (c.salute || '').toLowerCase();
+                    const first = (c.first || '').toLowerCase();
+                    const last = (c.last || '').toLowerCase();
+                    
+                    const matchesPhone = phone.includes(query);
+                    const matchesName = originalName.includes(query) || 
+                                       arabicName.includes(query) || 
+                                       englishName.includes(query) ||
+                                       salute.includes(query) ||
+                                       first.includes(query) ||
+                                       last.includes(query);
+                    
+                    if (!matchesPhone && !matchesName) return false;
+                }
+                return true;
+            });
+            
+            document.getElementById('contactCount').textContent = `${filtered.length} of ${contactsData.length} contacts`;
+        }
+
+        function selectAllParts() {
+            contactsData.forEach((c, i) => {
+                c.useSalute = !!c.salute;
+                c.useFirst = !!c.first;
+                c.useLast = !!c.last;
+            });
+            displayContacts();
+        }
+
+        function deselectAllParts() {
+            contactsData.forEach((c, i) => {
+                c.useSalute = false;
+                c.useFirst = false;
+                c.useLast = false;
+            });
+            displayContacts();
+        }
+
+        function resetProcessed() {
+            if (!confirm('Reset processed status for all contacts?')) return;
+            contactsData.forEach((c, i) => {
+                c.isProcessed = false;
+            });
+            displayContacts();
+        }
+
+        function exportContacts() {
+            const exportData = contactsData.map(c => ({
+                phone: c.phone,
+                originalName: c.originalName,
+                englishName: c.englishName,
+                arabicName: c.arabicName,
+                gender: c.gender,
+                salute: c.salute,
+                first: c.first,
+                last: c.last,
+                useSalute: c.useSalute,
+                useFirst: c.useFirst,
+                useLast: c.useLast,
+                suffix: (c.suffix || '').trim(),
+                isProcessed: c.isProcessed
+            }));
+            
+            const json = JSON.stringify(exportData, null, 2);
+            downloadFile(json, 'whatsapp-sender-contacts.json', 'application/json');
+        }
+
+        function downloadFile(content, filename, contentType) {
+            const blob = new Blob([content], { type: contentType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function saveTemplates() {
+            const templates = {
+                male: document.getElementById('templateMale').value,
+                female: document.getElementById('templateFemale').value
+            };
+            localStorage.setItem('waTemplates', JSON.stringify(templates));
+            alert('Templates saved!');
+        }
+
+        function loadTemplates() {
+            const saved = localStorage.getItem('waTemplates');
+            if (saved) {
+                const templates = JSON.parse(saved);
+                document.getElementById('templateMale').value = templates.male || defaultTemplates.male;
+                document.getElementById('templateFemale').value = templates.female || defaultTemplates.female;
+                alert('Templates loaded!');
+            } else {
+                alert('No saved templates found.');
+            }
+        }
+
+        function resetTemplates() {
+            document.getElementById('templateMale').value = defaultTemplates.male;
+            document.getElementById('templateFemale').value = defaultTemplates.female;
+            alert('Templates reset to defaults!');
+        }
+
+        function buildMessage(contact) {
+            const suffix = contact.suffix || '';
+            
+            let template = contact.gender === 'Female' 
+                ? document.getElementById('templateFemale').value 
+                : document.getElementById('templateMale').value;
+            
+            const parts = [];
+            if (contact.useSalute && contact.salute) parts.push(contact.salute);
+            if (contact.useFirst && contact.first) parts.push(contact.first);
+            if (contact.useLast && contact.last) parts.push(contact.last);
+            
+            let namePart = parts.join(' ');
+            if (suffix) namePart += suffix;
+            
+            let message = template
+                .replace(/\{\{salute\}\}/g, contact.useSalute ? contact.salute : '')
+                .replace(/\{\{first\}\}/g, contact.useFirst ? contact.first : '')
+                .replace(/\{\{last\}\}/g, contact.useLast ? contact.last : '')
+                .replace(/\{\{suffix\}\}/g, suffix);
+            
+            // Clean up multiple spaces
+            message = message.replace(/\s+/g, ' ').trim();
+            
+            return message;
+        }
+
+        async function startSending() {
+            if (contactsData.length === 0) {
+                alert('No contacts loaded. Please import contacts first.');
+                return;
+            }
+            
+            const sendMale = document.getElementById('sendMale').checked;
+            const sendFemale = document.getElementById('sendFemale').checked;
+            
+            const skipProcessed = document.getElementById('skipProcessed').checked;
+            
+            const minDelaySec = parseInt(document.getElementById('minDelaySec').value) || 8;
+            const maxDelaySec = parseInt(document.getElementById('maxDelaySec').value) || 15;
+            const warmupCount = parseInt(document.getElementById('warmupCount').value) || 20;
+            const batchSize = parseInt(document.getElementById('batchSize').value) || 100;
+            const breakMinutes = parseInt(document.getElementById('breakMinutes').value) || 15;
+            const dailyCap = parseInt(document.getElementById('dailyCap').value) || 0;
+            
+            let filteredContacts = contactsData.filter(c => {
+                if (!c.useSalute && !c.useFirst && !c.useLast) return false;
+                if (skipProcessed && c.isProcessed) return false;
+                if (c.gender === 'Male' && !sendMale) return false;
+                if (c.gender === 'Female' && !sendFemale) return false;
+                return true;
+            });
+            
+            // Apply daily cap
+            if (dailyCap > 0) {
+                const today = new Date().toDateString();
+                const todaySent = parseInt(localStorage.getItem('waSentToday') || '0');
+                const lastDate = localStorage.getItem('waSentDate') || '';
+                
+                if (lastDate !== today) {
+                    localStorage.setItem('waSentToday', '0');
+                    localStorage.setItem('waSentDate', today);
+                }
+                
+                const remaining = dailyCap - todaySent;
+                if (remaining <= 0) {
+                    alert(`Daily cap reached (${dailyCap} messages). Try again tomorrow.`);
+                    return;
+                }
+                
+                filteredContacts = filteredContacts.slice(0, Math.min(filteredContacts.length, remaining));
+                
+                if (remaining < filteredContacts.length) {
+                    alert(`Only ${remaining} messages remaining today (cap: ${dailyCap}).`);
+                }
+            }
+            
+            let queue = filteredContacts;
+            
+            // Shuffle contacts for random order
+            for (let i = queue.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [queue[i], queue[j]] = [queue[j], queue[i]];
+            }
+            
+            if (queue.length === 0) {
+                alert('No contacts match the current filters.');
+                return;
+            }
+            
+            const minDelayMs = minDelaySec * 1000;
+            const maxDelayMs = maxDelaySec * 1000;
+            const warmupDelayMs = Math.max(minDelayMs, maxDelayMs) * 1.5;
+            const breakMs = breakMinutes * 60 * 1000;
+            
+            const avgDelay = warmupCount > 0 
+                ? ((warmupDelayMs + (minDelayMs + maxDelayMs) / 2) / 2)
+                : (minDelayMs + maxDelayMs) / 2;
+            const batches = Math.ceil(queue.length / batchSize);
+            const totalBreaks = batches - 1;
+            const estimatedSec = (queue.length * avgDelay / 1000) + (totalBreaks * breakMinutes * 60);
+            const estimatedHours = (estimatedSec / 3600).toFixed(1);
+            
+            if (!confirm(`Start sending to ${queue.length} contacts?\n\nSettings:\n- Random delay: ${minDelaySec}-${maxDelaySec} sec\n- Warmup: first ${warmupCount} msgs with longer delay\n- Batch size: ${batchSize} (break every ${breakMinutes} min)\n\nEstimated time: ~${estimatedHours} hours\n${dailyCap > 0 ? `- Daily cap: ${dailyCap}` : ''}`)) {
+                return;
+            }
+            
+            isSending = true;
+            shouldStop = false;
+            sendQueue = queue;
+            
+            const sessionId = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            sessionLog = [{
+                sessionId,
+                startTime: new Date().toISOString(),
+                settings: { minDelaySec, maxDelaySec, warmupCount, batchSize, breakMinutes, dailyCap },
+                messages: []
+            }];
+            
+            document.getElementById('progressCard').style.display = 'block';
+            document.getElementById('sendBtn').disabled = true;
+            document.getElementById('sendLog').innerHTML = '';
+            
+            updateProgress(0, sendQueue.length);
+            
+            const maxRetries = parseInt(document.getElementById('maxRetries').value);
+            
+            let sent = 0;
+            let failed = 0;
+            let batchCount = 0;
+            let todaySentCount = sent;
+            
+            for (let i = 0; i < sendQueue.length; i++) {
+                if (shouldStop) {
+                    log(`<span class="text-warning">⏹ Stopped by user at ${i + 1}/${sendQueue.length}</span>`);
+                    break;
+                }
+                
+                // Check for batch break
+                if (i > 0 && i % batchSize === 0) {
+                    batchCount++;
+                    log(`<span class="text-warning">=== Batch ${batchCount} complete (${i} sent). Taking ${breakMinutes} min break... ===</span>`);
+                    await sleep(breakMs);
+                    log(`<span class="text-success">=== Resuming with message ${i + 1} ===</span>`);
+                }
+                
+                const contact = sendQueue[i];
+                const message = buildMessage(contact);
+                
+                const isWarmup = i < warmupCount;
+                const currentDelay = isWarmup 
+                    ? warmupDelayMs 
+                    : Math.floor(Math.random() * (maxDelayMs - minDelayMs + 1)) + minDelayMs;
+                
+                log(`<span class="text-info">[${i + 1}/${sendQueue.length}]</span> ${isWarmup ? '(warmup) ' : ''}Sending to ${contact.phone} (${contact.first} ${contact.last})...`);
+                
+                let success = false;
+                for (let retry = 0; retry <= maxRetries; retry++) {
+                    try {
+                        await sendMessage(contact.phone, message);
+                        success = true;
+                        break;
+                    } catch (error) {
+                        if (retry < maxRetries) {
+                            log(`<span class="text-warning">Retry ${retry + 1}/${maxRetries}: ${error.message}</span>`);
+                            await sleep(2000);
+                        } else {
+                            log(`<span class="text-danger">✗ Failed: ${error.message}</span>`);
+                            failed++;
+                        }
+                    }
+                }
+                
+                if (success) {
+                    sent++;
+                    todaySentCount++;
+                    contact.isProcessed = true;
+                    markContactProcessed(contactsData.indexOf(contact));
+                    log(`<span class="text-success">✓ Sent (delay: ${Math.round(currentDelay/1000)}s)</span>`);
+                    sessionLog[0].messages.push({
+                        phone: contact.phone,
+                        name: `${contact.first} ${contact.last}`.trim(),
+                        timestamp: new Date().toISOString(),
+                        status: 'sent'
+                    });
+                } else {
+                    sessionLog[0].messages.push({
+                        phone: contact.phone,
+                        name: `${contact.first} ${contact.last}`.trim(),
+                        timestamp: new Date().toISOString(),
+                        status: 'failed'
+                    });
+                }
+                
+                updateProgress(i + 1, sendQueue.length);
+                updateStats(sent, failed, sendQueue.length - i - 1);
+                
+                if (i < sendQueue.length - 1 && !shouldStop) {
+                    await sleep(currentDelay);
+                }
+            }
+            
+            // Update daily count
+            if (dailyCap > 0) {
+                const today = new Date().toDateString();
+                const prevCount = parseInt(localStorage.getItem('waSentToday') || '0');
+                localStorage.setItem('waSentToday', String(prevCount + todaySentCount));
+                localStorage.setItem('waSentDate', today);
+            }
+            
+            // Finalize session log
+            sessionLog[0].endTime = new Date().toISOString();
+            sessionLog[0].summary = { sent, failed, total: sendQueue.length };
+            
+            isSending = false;
+            document.getElementById('sendBtn').disabled = false;
+            
+            log(`<br><strong>=== Sending Complete ===</strong>`);
+            log(`<span class="text-success">Sent: ${sent}</span>`);
+            log(`<span class="text-danger">Failed: ${failed}</span>`);
+            if (dailyCap > 0) {
+                log(`<span class="text-info">Today total: ${sent} messages</span>`);
+            }
+            
+            // Download session log
+            const logFileName = `send-log-${sessionId}.json`;
+            downloadFile(JSON.stringify(sessionLog, null, 2), logFileName, 'application/json');
+            log(`<span class="text-info">Session log saved: ${logFileName}</span>`);
+            
+            // Save to localStorage
+            saveSessionLogToStorage(sessionLog[0]);
+        }
+        
+        function saveSessionLogToStorage(logEntry) {
+            try {
+                const logs = JSON.parse(localStorage.getItem('waSessionLogs') || '[]');
+                logs.push(logEntry);
+                // Keep only last 50 logs
+                if (logs.length > 50) logs.splice(0, logs.length - 50);
+                localStorage.setItem('waSessionLogs', JSON.stringify(logs));
+            } catch (e) {
+                console.error('Failed to save session log to localStorage:', e);
+            }
+        }
+        
+        function getStoredSessionLogs() {
+            try {
+                return JSON.parse(localStorage.getItem('waSessionLogs') || '[]');
+            } catch (e) {
+                return [];
+            }
+        }
+        
+        function loadSessionLogsFromStorage() {
+            const logs = getStoredSessionLogs();
+            if (logs.length === 0) {
+                alert('No session logs found in storage.');
+                return;
+            }
+            
+            const sentPhones = new Set();
+            logs.forEach(log => {
+                if (log.messages) {
+                    log.messages.forEach(msg => {
+                        if (msg.status === 'sent' && msg.phone) {
+                            const cleanPhone = msg.phone.replace(/\D/g, '');
+                            sentPhones.add(cleanPhone);
+                        }
+                    });
+                }
+            });
+            
+            if (sentPhones.size === 0) {
+                alert('No sent messages found in stored logs.');
+                return;
+            }
+            
+            let matched = 0;
+            contactsData.forEach(contact => {
+                const cleanPhone = contact.phone.replace(/\D/g, '');
+                if (sentPhones.has(cleanPhone)) {
+                    contact.isProcessed = true;
+                    matched++;
+                }
+            });
+            
+            displayContacts();
+            alert(`Loaded ${logs.length} session logs. Marked ${matched} contacts as processed.`);
+        }
+        
+        function calculateEstimatedTime() {
+            const queueLen = contactsData.filter(c => !c.isProcessed).length || 1000;
+            const minDelaySec = parseInt(document.getElementById('minDelaySec').value) || 8;
+            const maxDelaySec = parseInt(document.getElementById('maxDelaySec').value) || 15;
+            const warmupCount = parseInt(document.getElementById('warmupCount').value) || 20;
+            const batchSize = parseInt(document.getElementById('batchSize').value) || 100;
+            const breakMinutes = parseInt(document.getElementById('breakMinutes').value) || 15;
+            
+            const warmupDelay = Math.max(minDelaySec, maxDelaySec) * 1.5;
+            const avgDelay = warmupCount > 0 
+                ? ((warmupDelay + (minDelaySec + maxDelaySec) / 2) / 2)
+                : (minDelaySec + maxDelaySec) / 2;
+            const batches = Math.ceil(queueLen / batchSize);
+            const totalBreaks = batches - 1;
+            const totalSec = (queueLen * avgDelay) + (totalBreaks * breakMinutes * 60);
+            const hours = Math.floor(totalSec / 3600);
+            const mins = Math.round((totalSec % 3600) / 60);
+            
+            document.getElementById('estimatedTime').textContent = 
+                `~${hours}h ${mins}m for ${queueLen} messages (${batches} batches)`;
+        }
+
+        async function sendMessage(phone, message) {
+            const url = document.getElementById('wahaUrl').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const session = document.getElementById('sessionName').value.trim() || 'default';
+            
+            if (!url) {
+                throw new Error('WAHA URL not configured');
+            }
+            
+            const baseUrl = url.endsWith('/') ? url : url + '/';
+            
+            const payload = JSON.stringify({
+                chatId: phone.replace(/\D/g, '') + '@c.us',
+                reply_to: null,
+                text: message,
+                linkPreview: true,
+                linkPreviewHighQuality: false,
+                session: session
+            });
+            
+            const fetchOptions = {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: payload
+            };
+            
+            if (apiKey) {
+                fetchOptions.headers['X-Api-Key'] = apiKey;
+            }
+            
+            const response = await fetch(`${baseUrl}api/sendText`, fetchOptions);
+            
+            if (!response.ok) {
+                const error = await response.text();
+                throw new Error(`HTTP ${response.status}: ${error}`);
+            }
+            
+            return await response.json();
+        }
+
+        function stopSending() {
+            shouldStop = true;
+            log('<span class="text-warning">⏹ Stop requested, will stop after current message...</span>');
+        }
+
+        function updateProgress(current, total) {
+            const percent = Math.round((current / total) * 100);
+            document.getElementById('sendProgressBar').style.width = `${percent}%`;
+            document.getElementById('totalToSend').textContent = total;
+        }
+
+        function updateStats(sent, failed, remaining) {
+            document.getElementById('sentCount').textContent = sent;
+            document.getElementById('failedCount').textContent = failed;
+            document.getElementById('remainingCount').textContent = remaining;
+        }
+
+        function log(message) {
+            const logDiv = document.getElementById('sendLog');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${time}] ${message}<br>`;
+            
+            if (document.getElementById('autoScrollLog').checked) {
+                logDiv.scrollTop = logDiv.scrollHeight;
+            }
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function testConnection() {
+            const url = document.getElementById('wahaUrl').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            
+            if (!url) {
+                alert('Please enter WAHA API URL');
+                return;
+            }
+            
+            try {
+                const baseUrl = url.endsWith('/') ? url : url + '/';
+                const fetchOptions = { method: 'GET' };
+                
+                if (apiKey) {
+                    fetchOptions.headers = { 'X-Api-Key': apiKey };
+                }
+                
+                const response = await fetch(`${baseUrl}api/sessions`, fetchOptions);
+                
+                if (response.ok) {
+                    alert('✓ Connection successful! WAHA server is reachable.');
+                } else {
+                    alert(`⚠️ Server responded: HTTP ${response.status}`);
+                }
+            } catch (error) {
+                alert(`✗ Connection failed: ${error.message}\n\nMake sure WAHA is running and CORS is enabled.`);
+            }
+        }
+
+        // Load saved templates on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTemplates();
+            calculateEstimatedTime();
+            
+            // Recalculate when settings change
+            ['minDelaySec', 'maxDelaySec', 'warmupCount', 'batchSize', 'breakMinutes'].forEach(id => {
+                document.getElementById(id)?.addEventListener('change', calculateEstimatedTime);
+            });
+        });
+
+        async function sendTestMessage() {
+            const testPhone = '201026655008';
+            const testContact = {
+                phone: testPhone,
+                salute: 'م.',
+                first: 'محمد',
+                last: 'زيادة',
+                suffix: 'باشا',
+                useSalute: true,
+                useFirst: true,
+                useLast: true,
+                gender: 'Male'
+            };
+            
+            const templates = [
+                { name: 'Male', element: 'templateMale', gender: 'Male' },
+                { name: 'Female', element: 'templateFemale', gender: 'Female' }
+            ];
+            
+            if (!confirm(`Send test messages to ${testPhone}?\n\nThis will send 2 templates (Male & Female) with:\nSalute: ${testContact.salute}\nFirst: ${testContact.first}\nLast: ${testContact.last}\nSuffix: ${testContact.suffix}`)) {
+                return;
+            }
+            
+            const minDelaySec = parseInt(document.getElementById('minDelaySec').value) || 8;
+            const maxDelaySec = parseInt(document.getElementById('maxDelaySec').value) || 15;
+            const delay = Math.floor(Math.random() * (maxDelaySec - minDelaySec + 1) + minDelaySec) * 1000;
+            const maxRetries = parseInt(document.getElementById('maxRetries').value);
+            
+            document.getElementById('progressCard').style.display = 'block';
+            document.getElementById('sendLog').innerHTML = '';
+            log(`<span class="text-info">=== Starting Test Message Send ===</span>`);
+            
+            for (let i = 0; i < templates.length; i++) {
+                const tmpl = templates[i];
+                const template = document.getElementById(tmpl.element).value;
+                
+                testContact.gender = tmpl.gender;
+                
+                const message = template
+                    .replace(/\{\{salute\}\}/g, testContact.salute)
+                    .replace(/\{\{first\}\}/g, testContact.first)
+                    .replace(/\{\{last\}\}/g, testContact.last)
+                    .replace(/\{\{suffix\}\}/g, testContact.suffix)
+                    .replace(/\s+/g, ' ').trim();
+                
+                log(`<span class="text-info">[${i + 1}/2] Sending ${tmpl.name} template...</span>`);
+                log(`<span class="text-muted">Message: ${message.substring(0, 50)}...</span>`);
+                
+                let success = false;
+                for (let retry = 0; retry <= maxRetries; retry++) {
+                    try {
+                        await sendMessage(testPhone, message);
+                        success = true;
+                        break;
+                    } catch (error) {
+                        if (retry < maxRetries) {
+                            log(`<span class="text-warning">Retry ${retry + 1}/${maxRetries}: ${error.message}</span>`);
+                            await sleep(2000);
+                        } else {
+                            log(`<span class="text-danger">✗ Failed: ${error.message}</span>`);
+                        }
+                    }
+                }
+                
+                if (success) {
+                    log(`<span class="text-success">✓ ${tmpl.name} sent successfully</span>`);
+                }
+                
+                if (i < templates.length - 1) {
+                    log(`<span class="text-muted">Waiting ${Math.round(delay/1000)}s before next template...</span>`);
+                    await sleep(delay);
+                }
+            }
+            
+            log(`<span class="text-success">=== Test Complete ===</span>`);
+        }
+    </script>
+</body>
+</html>
