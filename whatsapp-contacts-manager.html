@@ -219,7 +219,7 @@
         <div class="filter-panel" id="filtersPanel" style="display: none;">
             <h6><i class="bi bi-funnel"></i> Filters</h6>
             <div class="row">
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <input type="text" class="form-control" id="searchName" placeholder="Search name..." onkeyup="filterTable()">
                 </div>
                 <div class="col-md-2">
@@ -237,14 +237,22 @@
                         <option value="false">Non-VIP</option>
                     </select>
                 </div>
-                <div class="col-md-5 text-end">
-                    <button class="btn btn-primary btn-action" onclick="enrichWithAI()">
+                <div class="col-md-2">
+                    <select class="form-select" id="filterReligion" onchange="filterTable()">
+                        <option value="">All Religions</option>
+                        <option value="مسلم">مسلم</option>
+                        <option value="مسيحي">مسيحي</option>
+                    </select>
+                </div>
+                <div class="col-md-4 text-end">
+                    <button class="btn btn-primary btn-action btn-sm" onclick="enrichWithAI()">
                         <span class="spinner-border spinner-border-sm loading" id="aiLoading"></span>
                         AI Enrich All
                     </button>
-                    <button class="btn btn-success btn-action" onclick="exportToCSV()">Export CSV</button>
-                    <button class="btn btn-warning btn-action" onclick="exportToJSON()">Export JSON</button>
-                    <button class="btn btn-danger btn-action" onclick="clearData()">Clear</button>
+                    <button class="btn btn-info btn-action btn-sm text-white" onclick="detectDuplicates()">Detect Duplicates</button>
+                    <button class="btn btn-success btn-action btn-sm" onclick="exportToCSV()">Export CSV</button>
+                    <button class="btn btn-warning btn-action btn-sm" onclick="exportToJSON()">Export JSON</button>
+                    <button class="btn btn-danger btn-action btn-sm" onclick="clearData()">Clear</button>
                 </div>
             </div>
         </div>
@@ -259,6 +267,7 @@
                         <th>Original Name</th>
                         <th>English Name</th>
                         <th>Arabic Name</th>
+                        <th>Religion</th>
                         <th>Gender</th>
                         <th>VIP</th>
                         <th>Actions</th>
@@ -455,6 +464,7 @@
                     originalName: originalName,
                     englishName: originalName,
                     arabicName: '',
+                    religion: 'مسلم',
                     gender: gender,
                     isVIP: false,
                     photo: contact.profilePicThumb || '',
@@ -833,6 +843,12 @@
                 <td class="editable" contenteditable="true" onblur="updateContact(${index}, 'originalName', this.innerText)">${contact.originalName}</td>
                 <td class="editable" contenteditable="true" onblur="updateContact(${index}, 'englishName', this.innerText)">${contact.englishName || ''}</td>
                 <td class="editable arabic-name" contenteditable="true" onblur="updateContact(${index}, 'arabicName', this.innerText)">${contact.arabicName || ''}</td>
+                <td>
+                    <select class="form-select form-select-sm" onchange="updateContact(${index}, 'religion', this.value)">
+                        <option value="مسلم" ${contact.religion === 'مسلم' || !contact.religion ? 'selected' : ''}>مسلم</option>
+                        <option value="مسيحي" ${contact.religion === 'مسيحي' ? 'selected' : ''}>مسيحي</option>
+                    </select>
+                </td>
                 <td class="${genderClass}">
                     <select class="form-select form-select-sm" onchange="updateContact(${index}, 'gender', this.value)">
                         <option value="Unknown" ${contact.gender === 'Unknown' ? 'selected' : ''}>Unknown</option>
@@ -891,6 +907,7 @@
             const searchName = document.getElementById('searchName').value.toLowerCase();
             const filterGender = document.getElementById('filterGender').value;
             const filterVIP = document.getElementById('filterVIP').value;
+            const filterReligion = document.getElementById('filterReligion').value;
             
             if (dataTable) {
                 dataTable.destroy();
@@ -904,8 +921,9 @@
                 
                 const matchesGender = !filterGender || contact.gender === filterGender;
                 const matchesVIP = filterVIP === '' || contact.isVIP.toString() === filterVIP;
+                const matchesReligion = !filterReligion || contact.religion === filterReligion;
                 
-                return matchesName && matchesGender && matchesVIP;
+                return matchesName && matchesGender && matchesVIP && matchesReligion;
             });
             
             const tbody = document.getElementById('contactsTableBody');
@@ -941,12 +959,13 @@
         }
 
         function exportToCSV() {
-            const headers = ['Phone Number', 'Original Name', 'English Name', 'Arabic Name', 'Gender', 'VIP'];
+            const headers = ['Phone Number', 'Original Name', 'English Name', 'Arabic Name', 'Religion', 'Gender', 'VIP'];
             const rows = contactsData.map(c => [
                 c.phone,
                 c.originalName,
                 c.englishName,
                 c.arabicName,
+                c.religion || 'مسلم',
                 c.gender,
                 c.isVIP ? 'Yes' : 'No'
             ]);
@@ -989,9 +1008,13 @@
                         return;
                     }
                     
-                    // Validate contact structure
+                    // Validate contact structure and map fields
                     const validContacts = importedData.filter(contact => {
                         return contact && (contact.phone || contact.originalName || contact.id);
+                    }).map(contact => {
+                        contact.religion = contact.religion || 'مسلم';
+                        contact.isVIP = contact.isVIP === true || contact.isVIP === 'Yes';
+                        return contact;
                     });
                     
                     if (validContacts.length === 0) {
@@ -1068,6 +1091,92 @@
                 document.getElementById('statsContainer').style.display = 'none';
                 document.getElementById('emptyState').style.display = 'block';
                 document.getElementById('progressContainer').style.display = 'none';
+            }
+        }
+
+        function detectDuplicates() {
+            if (contactsData.length === 0) {
+                alert('No contacts loaded.');
+                return;
+            }
+            
+            const seenPhones = new Set();
+            const duplicatePhones = [];
+            
+            const seenNames = new Set();
+            const duplicateNames = [];
+            
+            contactsData.forEach((c, idx) => {
+                const phone = (c.phone || '').trim();
+                const name = (c.originalName || c.arabicName || '').trim().toLowerCase();
+                
+                if (phone) {
+                    if (seenPhones.has(phone)) {
+                        duplicatePhones.push({ index: idx, contact: c });
+                    } else {
+                        seenPhones.add(phone);
+                    }
+                }
+                
+                if (name) {
+                    if (seenNames.has(name)) {
+                        duplicateNames.push({ index: idx, contact: c });
+                    } else {
+                        seenNames.add(name);
+                    }
+                }
+            });
+            
+            if (duplicatePhones.length === 0 && duplicateNames.length === 0) {
+                alert('No duplicate contacts found (by phone number or name).');
+                return;
+            }
+            
+            let msg = `Duplicate Detection Results:\n\n`;
+            if (duplicatePhones.length > 0) {
+                msg += `- Found ${duplicatePhones.length} duplicate contacts by Phone Number.\n`;
+            }
+            if (duplicateNames.length > 0) {
+                msg += `- Found ${duplicateNames.length} duplicate contacts by Name.\n`;
+            }
+            msg += `\nWould you like to automatically remove these duplicates (keeping the first occurrence)?`;
+            
+            if (confirm(msg)) {
+                const uniqueContacts = [];
+                const finalPhones = new Set();
+                const finalNames = new Set();
+                
+                contactsData.forEach(c => {
+                    const phone = (c.phone || '').trim();
+                    const name = (c.originalName || c.arabicName || '').trim().toLowerCase();
+                    
+                    let isDuplicate = false;
+                    if (phone && finalPhones.has(phone)) {
+                        isDuplicate = true;
+                    }
+                    if (name && finalNames.has(name)) {
+                        isDuplicate = true;
+                    }
+                    
+                    if (!isDuplicate) {
+                        if (phone) finalPhones.add(phone);
+                        if (name) finalNames.add(name);
+                        uniqueContacts.push(c);
+                    }
+                });
+                
+                const removedCount = contactsData.length - uniqueContacts.length;
+                contactsData = uniqueContacts;
+                
+                // Re-index
+                contactsData.forEach((c, idx) => {
+                    c.id = idx;
+                });
+                
+                displayContacts();
+                updateStats();
+                
+                alert(`Successfully removed ${removedCount} duplicate contacts.`);
             }
         }
 
